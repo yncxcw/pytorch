@@ -282,6 +282,12 @@ class DataLoader(object):
     def _auto_collation(self):
         return self.batch_sampler is not None
 
+    # Note(weich): The _index_sampler property is either a sampler of a batch of samper.
+    # the next(iter(self._index_sampler)) should return either a indice into the dataset 
+    # or a list of indices into the dataset.
+
+    # With auto_collation, the list of indices returned by batch_sampler is used to batch
+    # a list of tensors.  
     @property
     def _index_sampler(self):
         # The actual sampler used for generating indices for `_DatasetFetcher`
@@ -336,6 +342,7 @@ class _BaseDataLoaderIter(object):
         return self
 
     def _next_index(self):
+        # Note (weich) This is actually sampler or batch_sampelr
         return next(self._sampler_iter)  # may raise StopIteration
 
     def _next_data(self):
