@@ -1,9 +1,9 @@
 ## @package pipeline
 # Module caffe2.python.pipeline
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
+
+
+
+
 
 from caffe2.python import core, queue_util
 from caffe2.python.dataio import Reader, Writer
@@ -12,7 +12,7 @@ from caffe2.python.schema import as_record, Field
 from caffe2.python.task import Node, Task, TaskGroup
 
 
-class Output(object):
+class Output:
     """
     Represents the result of a processor function. A processor can either
     return an Output, or it can return a record, in which case an Output will be
@@ -374,7 +374,7 @@ class ProcessingReader(Reader):
         # from it.
         with NetBuilder() as nb:
             # Current NetBuilder is optionally used inside the processor,
-            # then its children are retrived inside of
+            # then its children are retrieved inside of
             # normalize_processor_output.
             # Once readers and writers also use NetBuilder,
             # this logic will be more natural.
@@ -394,7 +394,7 @@ class ProcessingReader(Reader):
         return read_nets, status, fields
 
 
-class NetProcessor(object):
+class NetProcessor:
     """
     Processor that clones a core.Net each time it's called, executing
     the cloned net as the processor. It requires the Net to have input

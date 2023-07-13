@@ -1,9 +1,9 @@
 ## @package github
 # Module caffe2.python.docs.github
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
+
+
+
+
 import argparse
 import os
 from caffe2.python.docs.formatter import Markdown
@@ -55,7 +55,7 @@ class GHMarkdown(Markdown):
 def getCodeLink(formatter, schema):
     formatter = formatter.clone()
     path = os.path.relpath(schema.file, "caffe2")
-    schemaLink = ('https://github.com/pytorch/pytorch/blob/master/{path}'
+    schemaLink = ('https://github.com/pytorch/pytorch/blob/main/{path}'
                   .format(path=path))
     formatter.addLink('{path}'.format(path=path), schemaLink)
     return formatter.dump()

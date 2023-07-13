@@ -61,13 +61,7 @@
 namespace c10 {
 
 template <typename _Iterator>
-class reverse_iterator
-    : public std::iterator<
-          typename std::iterator_traits<_Iterator>::iterator_category,
-          typename std::iterator_traits<_Iterator>::value_type,
-          typename std::iterator_traits<_Iterator>::difference_type,
-          typename std::iterator_traits<_Iterator>::pointer,
-          typename std::iterator_traits<_Iterator>::reference> {
+class reverse_iterator {
  protected:
   _Iterator current;
 
@@ -75,9 +69,11 @@ class reverse_iterator
 
  public:
   using iterator_type = _Iterator;
+  using value_type = typename __traits_type::value_type;
   using difference_type = typename __traits_type::difference_type;
   using pointer = typename __traits_type::pointer;
   using reference = typename __traits_type::reference;
+  using iterator_category = typename __traits_type::iterator_category;
 
   constexpr reverse_iterator() : current() {}
 
@@ -86,9 +82,9 @@ class reverse_iterator
   constexpr reverse_iterator(const reverse_iterator& __x)
       : current(__x.current) {}
 
-  constexpr reverse_iterator& operator=(
-      const reverse_iterator& rhs) noexcept {
+  constexpr reverse_iterator& operator=(const reverse_iterator& rhs) noexcept {
     current = rhs.current;
+    return *this;
   }
 
   template <typename _Iter>
@@ -260,10 +256,9 @@ inline constexpr bool operator>=(
 }
 
 template <typename _IteratorL, typename _IteratorR>
-inline constexpr auto operator-(
+inline constexpr decltype(auto) operator-(
     const reverse_iterator<_IteratorL>& __x,
-    const reverse_iterator<_IteratorR>& __y)
-    -> decltype(__y.base() - __x.base()) {
+    const reverse_iterator<_IteratorR>& __y) {
   return __y.base() - __x.base();
 }
 
@@ -287,8 +282,7 @@ inline constexpr reverse_iterator<_Iterator> make_reverse_iterator(
 }
 
 template <typename _Iterator>
-auto __niter_base(reverse_iterator<_Iterator> __it)
-    -> decltype(__make_reverse_iterator(__niter_base(__it.base()))) {
+decltype(auto) __niter_base(reverse_iterator<_Iterator> __it) {
   return __make_reverse_iterator(__niter_base(__it.base()));
 }
 

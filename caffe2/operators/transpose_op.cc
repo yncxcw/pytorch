@@ -28,9 +28,11 @@ OPERATOR_SCHEMA(Transpose)
 
         CAFFE_ENFORCE(valid_axes, "Axes argument passed in had invalid values");
         CAFFE_ENFORCE(
+            // NOLINTNEXTLINE(clang-diagnostic-sign-compare)
             axes.size() == tensor_size,
             "Axes argument passed in had the incorrect size");
 
+        // NOLINTNEXTLINE(modernize-loop-convert)
         for (auto axis = axes.begin(); axis != axes.end(); ++axis) {
           out[0].add_dims(in[0].dims().Get(*axis));
         }
@@ -49,7 +51,7 @@ For example, when axes=(1, 0, 2), given an input tensor of shape
 
 Github Links:
 
-- https://github.com/pytorch/pytorch/blob/master/caffe2/operators/transpose_op.cc
+- https://github.com/pytorch/pytorch/blob/main/caffe2/operators/transpose_op.cc
 
 <details>
 

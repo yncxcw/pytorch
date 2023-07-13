@@ -6,10 +6,19 @@
 #include <cusparse.h>
 #include <cublas_v2.h>
 
+#ifdef CUDART_VERSION
+#include <cusolverDn.h>
+#endif
+
+#if defined(USE_ROCM) && ROCM_VERSION >= 50300
+#include <hipsolver/hipsolver.h>
+#endif
+
 #include <ATen/core/ATenGeneral.h>
 #include <ATen/Context.h>
 #include <c10/cuda/CUDAStream.h>
 #include <c10/cuda/CUDAFunctions.h>
+#include <c10/util/Logging.h>
 #include <ATen/cuda/Exceptions.h>
 
 namespace at {
@@ -52,18 +61,27 @@ inline bool is_available() {
     return c10::cuda::device_count() > 0;
 }
 
-TORCH_CUDA_API cudaDeviceProp* getCurrentDeviceProperties();
+TORCH_CUDA_CPP_API cudaDeviceProp* getCurrentDeviceProperties();
 
-TORCH_CUDA_API int warp_size();
+TORCH_CUDA_CPP_API int warp_size();
 
-TORCH_CUDA_API cudaDeviceProp* getDeviceProperties(int64_t device);
+TORCH_CUDA_CPP_API cudaDeviceProp* getDeviceProperties(int64_t device);
 
-TORCH_CUDA_API Allocator* getCUDADeviceAllocator();
+TORCH_CUDA_CPP_API bool canDeviceAccessPeer(
+    int64_t device,
+    int64_t peer_device);
+
+TORCH_CUDA_CPP_API Allocator* getCUDADeviceAllocator();
 
 /* Handles */
-TORCH_CUDA_API cusparseHandle_t getCurrentCUDASparseHandle();
-TORCH_CUDA_API cublasHandle_t getCurrentCUDABlasHandle();
+TORCH_CUDA_CPP_API cusparseHandle_t getCurrentCUDASparseHandle();
+TORCH_CUDA_CPP_API cublasHandle_t getCurrentCUDABlasHandle();
 
+TORCH_CUDA_CPP_API void clearCublasWorkspaces();
+
+#if defined(CUDART_VERSION) || defined(USE_ROCM) && ROCM_VERSION >= 50300
+TORCH_CUDA_CPP_API cusolverDnHandle_t getCurrentCUDASolverDnHandle();
+#endif
 
 } // namespace cuda
 } // namespace at

@@ -1,13 +1,12 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
+
+
+
+
 
 import abc
-import six
 
 
-class NetModifier(six.with_metaclass(abc.ABCMeta, object)):
+class NetModifier(metaclass=abc.ABCMeta):
     """
     An abstraction class for supporting modifying a generated net.
     Inherited classes should implement the modify_net method where
@@ -17,9 +16,6 @@ class NetModifier(six.with_metaclass(abc.ABCMeta, object)):
         modifier = SomeNetModifier(opts)
         modifier(net)
     """
-
-    def __init__(self):
-        pass
 
     @abc.abstractmethod
     def modify_net(self, net, init_net=None, grad_map=None, blob_to_device=None):

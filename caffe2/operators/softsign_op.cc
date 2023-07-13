@@ -26,6 +26,7 @@ bool SoftsignGradientFunctor<CPUContext>::Forward(
     T* dX,
     CPUContext* /* context */) const {
   const int size = std::accumulate(
+      // NOLINTNEXTLINE(modernize-use-transparent-functors)
       X_dims.cbegin(), X_dims.cend(), 1, std::multiplies<int>());
   ConstEigenVectorArrayMap<T> dY_arr(dY, size);
   ConstEigenVectorArrayMap<T> X_arr(X, size);
@@ -57,7 +58,7 @@ OPERATOR_SCHEMA(Softsign)
 
 Github Links:
 
-- https://github.com/pytorch/pytorch/blob/master/caffe2/operators/softsign_op.cc
+- https://github.com/pytorch/pytorch/blob/main/caffe2/operators/softsign_op.cc
 
 
 <details>

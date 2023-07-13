@@ -36,7 +36,7 @@ and output blobs.
 
 Github Links:
 
-- https://github.com/pytorch/pytorch/blob/master/caffe2/operators/tanh_op.cc
+- https://github.com/pytorch/pytorch/blob/main/caffe2/operators/tanh_op.cc
 
 
 <details>
@@ -90,6 +90,10 @@ X:
         "element-wise")
     .InheritOnnxSchema();
 
-OPERATOR_SCHEMA(TanhGradient).NumInputs(2).NumOutputs(1).AllowInplace({{1, 0}});
+OPERATOR_SCHEMA(TanhGradient)
+    .NumInputs(2)
+    .NumOutputs(1)
+    .IdenticalTypeAndShapeOfInput(1)
+    .AllowInplace({{1, 0}});
 
 } // namespace caffe2

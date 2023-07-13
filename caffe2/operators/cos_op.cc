@@ -16,6 +16,7 @@ bool CosGradientFunctor<CPUContext>::Forward(
     T* dX,
     CPUContext* /* context */) const {
   const int size = std::accumulate(
+      // NOLINTNEXTLINE(modernize-use-transparent-functors)
       X_dims.cbegin(), X_dims.cend(), 1, std::multiplies<int>());
   ConstEigenVectorArrayMap<T> dY_arr(dY, size);
   ConstEigenVectorArrayMap<T> X_arr(X, size);
@@ -42,7 +43,7 @@ Calculates the cosine of the given input tensor, element-wise.
 
 Github Links:
 
-- https://github.com/pytorch/pytorch/blob/master/caffe2/operators/cos_op.cc
+- https://github.com/pytorch/pytorch/blob/main/caffe2/operators/cos_op.cc
 
 
 <details>

@@ -1,10 +1,10 @@
 ## @package onnx
 # Module caffe2.python.onnx.backend_rep_cpp
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
+
+
+
+
 
 from onnx.backend.base import BackendRep, namedtupledict
 
@@ -12,7 +12,7 @@ from onnx.backend.base import BackendRep, namedtupledict
 # mainly to handle the different input and output types for convenience of Python
 class Caffe2CppRep(BackendRep):
     def __init__(self, cpp_rep):
-        super(Caffe2CppRep, self).__init__()
+        super().__init__()
         self.__core = cpp_rep
         self.__external_outputs = cpp_rep.external_outputs()
         self.__external_inputs = cpp_rep.external_inputs()
@@ -49,4 +49,3 @@ class Caffe2CppRep(BackendRep):
             # single input
             output_values = self.__core.run([inputs])
         return namedtupledict('Outputs', self.__external_outputs)(*output_values)
-

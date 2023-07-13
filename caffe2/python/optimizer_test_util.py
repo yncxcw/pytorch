@@ -1,21 +1,20 @@
 ## @package optimizer_test_util
 # Module caffe2.python.optimizer_test_util
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
+
+
+
+
 
 import unittest
 import numpy as np
 from caffe2.python import brew, core, workspace, cnn, optimizer
-from caffe2.proto import caffe2_pb2
 from caffe2.python.modeling.initializers import (
     Initializer, PseudoFP16Initializer)
 
 from caffe2.python.model_helper import ModelHelper
 
 
-class OptimizerTestBase(object):
+class OptimizerTestBase:
     """
     This is an abstract base class.
     Don't inherit from unittest.TestCase, and don't name it 'Test*'.
@@ -149,7 +148,7 @@ class OptimizerTestBase(object):
         self.check_optimizer(optimizer)
 
 
-class LRModificationTestBase(object):
+class LRModificationTestBase:
     """
     This is an abstract base class.
     Don't inherit from unittest.TestCase, and don't name it 'Test*'.

@@ -1,15 +1,15 @@
 # @package modifier_context
 # Module caffe2.python.modifier_context
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
+
+
+
+
 
 
 DEFAULT_MODIFIER = 'DEFAULT'
 
 
-class ModifierContext(object):
+class ModifierContext:
     """
     provide context to allow param_info to have different modifiers
     """
@@ -40,7 +40,7 @@ class ModifierContext(object):
         self._rebuild_modifiers()
 
 
-class UseModifierBase(object):
+class UseModifierBase:
     '''
     context class to allow setting the current context.
     Example usage with layer:

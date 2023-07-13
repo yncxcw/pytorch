@@ -15,6 +15,7 @@ bool SinhGradientFunctor<CPUContext>::Forward(
     T* dX,
     CPUContext* /* context */) const {
   const int size = std::accumulate(
+      // NOLINTNEXTLINE(modernize-use-transparent-functors)
       X_dims.cbegin(), X_dims.cend(), 1, std::multiplies<int>());
   ConstEigenVectorArrayMap<T> dY_arr(dY, size);
   ConstEigenVectorArrayMap<T> X_arr(X, size);
@@ -44,7 +45,7 @@ Calculates the hyperbolic sine of the given input tensor, element-wise.
 
 Github Links:
 
-- https://github.com/pytorch/pytorch/blob/master/caffe2/operators/sinh_op.cc
+- https://github.com/pytorch/pytorch/blob/main/caffe2/operators/sinh_op.cc
 
 
 <details>
@@ -93,7 +94,7 @@ Y: [1.15841695 0.5541099  0.03216984 1.09924557 0.49732079]
 OPERATOR_SCHEMA(SinhGradient)
     .NumInputs(2)
     .NumOutputs(1)
-    .IdenticalTypeAndShape();
+    .IdenticalTypeAndShapeOfInput(0);
 
 namespace {
 

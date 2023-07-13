@@ -1,140 +1,140 @@
 #pragma once
 
 #include <c10/core/Allocator.h>
-#include <c10/core/ScalarType.h>
+#include <c10/core/SymInt.h>
+#include <c10/core/impl/PyObjectSlot.h>
 
 #include <c10/util/intrusive_ptr.h>
 
 namespace c10 {
 
-struct C10_API StorageImpl final : public c10::intrusive_ptr_target {
+// A storage represents the underlying backing data buffer for a
+// tensor.  This concept was inherited from the original Torch7
+// codebase; we'd kind of like to get rid of the concept
+// (see https://github.com/pytorch/pytorch/issues/14797) but
+// it's hard work and no one has gotten around to doing it.
+//
+// NB: storage is supposed to uniquely own a data pointer; e.g.,
+// two non-null data pointers alias if and only if they are from
+// the same storage.  Technically you can violate this invariant
+// (e.g., you can create a non-owning StorageImpl with at::from_blob)
+// but a lot of things won't work correctly, including:
+//
+// - An ordinary deleter on such a storage is wrong, because normal deleters
+//   assume unique ownership, but if you have two storages at the same data,
+//   that implies there is some sort of shared ownership. So your deleter would
+//   have to actually be internally doing some sort of refcount thing
+// - Deepcopy in Python side relies on storage equality and not data pointer
+//   equality; so if there are two separate storages pointing to the same data,
+//   the data will actually get duplicated in that case (one data ptr before,
+//   two data ptrs after)
+// - Version counts won't work correctly, because we do all VC tracking at the
+//   level of storages (unless you explicitly disconnect the VC with detach);
+//   mutation because data pointers are the same are totally untracked
+struct C10_API StorageImpl : public c10::intrusive_ptr_target {
  public:
+  struct use_byte_size_t {};
+
   StorageImpl(
-      caffe2::TypeMeta data_type,
-      int64_t numel,
+      use_byte_size_t /*use_byte_size*/,
+      SymInt size_bytes,
       at::DataPtr data_ptr,
       at::Allocator* allocator,
       bool resizable)
-      : data_type_(data_type),
-        data_ptr_(std::move(data_ptr)),
-        numel_(numel),
+      : data_ptr_(std::move(data_ptr)),
+        size_bytes_(std::move(size_bytes)),
+        size_bytes_is_heap_allocated_(size_bytes_.is_heap_allocated()),
         resizable_(resizable),
         received_cuda_(false),
         allocator_(allocator) {
     if (resizable) {
-      AT_ASSERTM(
+      TORCH_INTERNAL_ASSERT(
           allocator_, "For resizable storage, allocator must be provided");
-    }
-    if (numel > 0) {
-      if (data_type_.id() == caffe2::TypeIdentifier::uninitialized()) {
-        AT_ERROR(
-            "Constructing a storage with meta of unknown type and non-zero numel");
-      }
     }
   }
 
   StorageImpl(
-      caffe2::TypeMeta data_type,
-      int64_t numel,
+      use_byte_size_t /*use_byte_size*/,
+      SymInt size_bytes,
       at::Allocator* allocator,
       bool resizable)
       : StorageImpl(
-            data_type,
-            numel,
-            allocator->allocate(data_type.itemsize() * numel),
+            use_byte_size_t(),
+            size_bytes,
+            size_bytes.is_heap_allocated()
+                ? allocator->allocate(0)
+                : allocator->allocate(size_bytes.as_int_unchecked()),
             allocator,
             resizable) {}
 
-  StorageImpl& operator=(StorageImpl&& other) = default;
+  StorageImpl& operator=(StorageImpl&& other) = delete;
   StorageImpl& operator=(const StorageImpl&) = delete;
   StorageImpl() = delete;
-  StorageImpl(StorageImpl&& other) = default;
+  StorageImpl(StorageImpl&& other) = delete;
   StorageImpl(const StorageImpl&) = delete;
-  ~StorageImpl() = default;
+  ~StorageImpl() override = default;
 
   void reset() {
     data_ptr_.clear();
-    numel_ = 0;
+    size_bytes_ = 0;
+    size_bytes_is_heap_allocated_ = false;
   }
 
-  template <typename T>
-  inline bool IsType() const {
-    return data_type_.Match<T>();
-  }
-
-  template <typename T>
-  inline T* data() const {
-    auto data_type = caffe2::TypeMeta::Make<T>();
-    if (dtype() != data_type) {
-      AT_ERROR(
-          "Attempt to access StorageImpl having data type ",
-          dtype(),
-          " as data type ",
-          data_type);
-    }
-    return unsafe_data<T>();
-  }
-
-  template <typename T>
-  inline T* unsafe_data() const {
-    return static_cast<T*>(this->data_ptr_.get());
-  }
-
+  // Destructor doesn't call release_resources because it's
+  // unnecessary; don't forget to change that if needed!
   void release_resources() override {
     data_ptr_.clear();
   }
 
-  size_t itemsize() const {
-    return data_type_.itemsize();
+  size_t nbytes() const {
+    // OK to do this instead of maybe_as_int as nbytes is guaranteed positive
+    TORCH_CHECK(!size_bytes_is_heap_allocated_);
+    return size_bytes_.as_int_unchecked();
   }
 
-  size_t capacity() const {
-    return numel_ * itemsize();
+  SymInt sym_nbytes() const {
+    return size_bytes_;
   }
-
-  int64_t numel() const {
-    return numel_;
-  };
 
   // TODO: remove later
-  void set_numel(int64_t numel) {
-    numel_ = numel;
-  };
+  void set_nbytes(size_t size_bytes) {
+    size_bytes_ = size_bytes;
+    size_bytes_is_heap_allocated_ = false;
+  }
+
+  void set_nbytes(c10::SymInt size_bytes) {
+    size_bytes_ = std::move(size_bytes);
+  }
 
   bool resizable() const {
     return resizable_;
-  };
+  }
 
-  at::DataPtr& data_ptr() {
+  at::DataPtr& mutable_data_ptr() {
     return data_ptr_;
-  };
+  }
 
   const at::DataPtr& data_ptr() const {
     return data_ptr_;
-  };
+  }
 
   // Returns the previous data_ptr
   at::DataPtr set_data_ptr(at::DataPtr&& data_ptr) {
-    std::swap(data_ptr_, data_ptr);
-    return std::move(data_ptr);
-  };
-
-  // XXX: TERRIBLE! DONT USE UNLESS YOU HAVE TO! AND EVEN THEN DONT, JUST DONT!
-  // Setting the data_type will require you to audit many other parts of the
-  // struct again to make sure it's still valid.
-  void set_dtype(const caffe2::TypeMeta& data_type) {
-    int64_t capacity = numel_ * data_type_.itemsize();
-    data_type_ = data_type;
-    numel_ = capacity / data_type_.itemsize();
+    at::DataPtr old_data_ptr(std::move(data_ptr_));
+    data_ptr_ = std::move(data_ptr);
+    return old_data_ptr;
   }
 
-  // TODO: Return const ptr eventually if possible
-  void* data() {
+  void set_data_ptr_noswap(at::DataPtr&& data_ptr) {
+    data_ptr_ = std::move(data_ptr);
+  }
+
+  const void* data() const {
     return data_ptr_.get();
   }
 
-  void* data() const {
-    return data_ptr_.get();
+  void* mutable_data() {
+    return data_ptr_.mutable_get();
   }
 
   at::DeviceType device_type() const {
@@ -145,13 +145,9 @@ struct C10_API StorageImpl final : public c10::intrusive_ptr_target {
     return allocator_;
   }
 
-  const caffe2::TypeMeta& dtype() const {
-    return data_type_;
-  }
-
   const at::Allocator* allocator() const {
     return allocator_;
-  };
+  }
 
   // You generally shouldn't use this method, but it is occasionally
   // useful if you want to override how a tensor will be reallocated,
@@ -178,11 +174,10 @@ struct C10_API StorageImpl final : public c10::intrusive_ptr_target {
    */
   void UniqueStorageShareExternalPointer(
       void* src,
-      const caffe2::TypeMeta& data_type,
-      size_t capacity,
+      size_t size_bytes,
       DeleterFnPtr d = nullptr) {
     UniqueStorageShareExternalPointer(
-        at::DataPtr(src, src, d, data_ptr_.device()), data_type, capacity);
+        at::DataPtr(src, src, d, data_ptr_.device()), size_bytes);
   }
 
   /**
@@ -190,23 +185,10 @@ struct C10_API StorageImpl final : public c10::intrusive_ptr_target {
    */
   void UniqueStorageShareExternalPointer(
       at::DataPtr&& data_ptr,
-      const caffe2::TypeMeta& data_type,
-      size_t capacity) {
-    data_type_ = data_type;
-    // TODO: Use CAFFE_ENFORCE_WITH_CALLER equivalent
-    // For now causes lots of redefine issues if caffe2/core/logging.h is used
-    if (data_type_.id() == caffe2::TypeIdentifier::uninitialized()) {
-      AT_ERROR(
-          "To share with a raw external pointer you need to have meta "
-          "already set.");
-    }
+      size_t size_bytes) {
     data_ptr_ = std::move(data_ptr);
-    // NOTE: data_type might change and so it's also possible that capacity
-    // might not be divisible by itemsize. There is no way for us to keep track
-    // of the exact capacity if we're not explicity storing is. More conrectely
-    // capacity() might not return the value that was set here, if itemsize does
-    // not evenly divide it.
-    numel_ = capacity / data_type_.itemsize();
+    size_bytes_ = size_bytes;
+    size_bytes_is_heap_allocated_ = false;
     allocator_ = nullptr;
     resizable_ = false;
   }
@@ -222,13 +204,26 @@ struct C10_API StorageImpl final : public c10::intrusive_ptr_target {
   }
 
  private:
-  caffe2::TypeMeta data_type_;
   DataPtr data_ptr_;
-  int64_t numel_;
+  SymInt size_bytes_;
+  bool size_bytes_is_heap_allocated_;
   bool resizable_;
   // Identifies that Storage was received from another process and doesn't have
   // local to process cuda memory allocation
   bool received_cuda_;
   Allocator* allocator_;
+  impl::PyObjectSlot pyobj_slot_;
 };
+
+// Declare StorageImpl create function pointer types.
+using StorageImplCreateHelper = intrusive_ptr<StorageImpl> (*)(
+    StorageImpl::use_byte_size_t,
+    SymInt size_bytes,
+    Allocator* allocator,
+    bool resizable);
+
+C10_API void SetStorageImplCreate(DeviceType t, StorageImplCreateHelper fptr);
+
+C10_API StorageImplCreateHelper GetStorageImplCreate(DeviceType t);
+
 } // namespace c10

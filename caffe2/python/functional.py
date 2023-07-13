@@ -1,13 +1,12 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
+
+
+
+
 
 from caffe2.python import core, workspace
 from caffe2.proto import caffe2_pb2
 from caffe2.python.onnx.workspace import Workspace
 from collections import namedtuple
-from six import string_types
 
 OpSchema = workspace.C.OpSchema
 
@@ -19,7 +18,7 @@ def namedtupledict(typename, field_names, *args, **kwargs):
     data = namedtuple(typename, field_names, *args, **kwargs)
 
     def getitem(self, key):
-        if isinstance(key, string_types):
+        if isinstance(key, str):
             key = field_names_map[key]
         return super(type(self), self).__getitem__(key)
 
@@ -27,7 +26,7 @@ def namedtupledict(typename, field_names, *args, **kwargs):
     return data
 
 
-class _Functional(object):
+class _Functional:
     def __getattribute__(self, op_type):
         def op_func(*inputs, **args):
             ws = Workspace()
@@ -83,7 +82,7 @@ class _Functional(object):
                 if schema.inf == max_output:
                     raise ValueError(
                         "For operators with max_output == inf,\
-                        user should pass num_output explicity."
+                        user should pass num_output explicitly."
                     )
                 output_names = get_name_list(
                     output_prefix, max_output, max_output

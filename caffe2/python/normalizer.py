@@ -1,9 +1,9 @@
 # @package optimizer
 # Module caffe2.python.normalizer
-from __future__ import absolute_import, division, print_function, unicode_literals
 
 
-class Normalizer(object):
+
+class Normalizer:
     def __init__(self):
         pass
     """
@@ -21,7 +21,7 @@ class Normalizer(object):
 
 class BatchNormalizer(Normalizer):
     def __init__(self, momentum, scale_init_value=1.0):
-        super(BatchNormalizer, self).__init__()
+        super().__init__()
         self._momentum = float(momentum)
         self._scale_init_value = float(scale_init_value)
 
@@ -33,7 +33,7 @@ class BatchNormalizer(Normalizer):
 
 class LayerNormalizer(Normalizer):
     def __init__(self, epsilon, use_layer_norm_op=True, scale_init_value=1.0):
-        super(LayerNormalizer, self).__init__()
+        super().__init__()
         self._epsilon = float(epsilon)
         self._use_layer_norm_op = use_layer_norm_op
         self._scale_init_value = float(scale_init_value)

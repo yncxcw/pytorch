@@ -1,9 +1,9 @@
 ## @package seq2seq_model_helper
 # Module caffe2.python.models.seq2seq.seq2seq_model_helper
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
+
+
+
+
 
 from caffe2.python import scope
 from caffe2.python.model_helper import ModelHelper
@@ -20,11 +20,7 @@ class Seq2SeqModelHelper(ModelHelper):
         if kwargs.get('ws_nbytes_limit', None):
             arg_scope['ws_nbytes_limit'] = kwargs.pop('ws_nbytes_limit')
 
-        super(Seq2SeqModelHelper, self).__init__(
-            init_params=init_params,
-            arg_scope=arg_scope,
-            **kwargs
-        )
+        super().__init__(init_params=init_params, arg_scope=arg_scope, **kwargs)
         self.non_trainable_params = []
 
     def AddParam(self, name, init=None, init_value=None, trainable=True):

@@ -1,18 +1,15 @@
 ## @package rnn_cell
 # Module caffe2.python.rnn_cell
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
+
+
+
+
 
 import functools
 import inspect
-import itertools
 import logging
 import numpy as np
 import random
-import six
-from future.utils import viewkeys
 
 from caffe2.proto import caffe2_pb2
 from caffe2.python.attention import (
@@ -32,7 +29,7 @@ from caffe2.python.model_helper import ModelHelper
 def _RectifyName(blob_reference_or_name):
     if blob_reference_or_name is None:
         return None
-    if isinstance(blob_reference_or_name, six.string_types):
+    if isinstance(blob_reference_or_name, str):
         return core.ScopedBlobReference(blob_reference_or_name)
     if not isinstance(blob_reference_or_name, core.BlobReference):
         raise Exception("Unknown blob reference type")
@@ -42,10 +39,10 @@ def _RectifyName(blob_reference_or_name):
 def _RectifyNames(blob_references_or_names):
     if blob_references_or_names is None:
         return None
-    return list(map(_RectifyName, blob_references_or_names))
+    return [_RectifyName(i) for i in blob_references_or_names]
 
 
-class RNNCell(object):
+class RNNCell:
     '''
     Base class for writing recurrent / stateful operations.
 
@@ -236,7 +233,7 @@ class RNNCell(object):
         '''
         Returns recurrent state names with self.name scoping applied
         '''
-        return list(map(self.scope, self.get_state_names_override()))
+        return [self.scope(name) for name in self.get_state_names_override()]
 
     def get_state_names_override(self):
         '''
@@ -271,7 +268,7 @@ class RNNCell(object):
         return state_outputs[output_sequence_index]
 
 
-class LSTMInitializer(object):
+class LSTMInitializer:
     def __init__(self, hidden_size):
         self.hidden_size = hidden_size
 
@@ -305,7 +302,7 @@ class BasicRNNCell(RNNCell):
         activation=None,
         **kwargs
     ):
-        super(BasicRNNCell, self).__init__(**kwargs)
+        super().__init__(**kwargs)
         self.drop_states = drop_states
         self.input_size = input_size
         self.hidden_size = hidden_size
@@ -406,7 +403,7 @@ class LSTMCell(RNNCell):
         initializer=None,
         **kwargs
     ):
-        super(LSTMCell, self).__init__(initializer=initializer, **kwargs)
+        super().__init__(initializer=initializer, **kwargs)
         self.initializer = initializer or LSTMInitializer(
             hidden_size=hidden_size)
 
@@ -510,9 +507,7 @@ class LayerNormLSTMCell(RNNCell):
         initializer=None,
         **kwargs
     ):
-        super(LayerNormLSTMCell, self).__init__(
-            initializer=initializer, **kwargs
-        )
+        super().__init__(initializer=initializer, **kwargs)
         self.initializer = initializer or LSTMInitializer(
             hidden_size=hidden_size
         )
@@ -831,7 +826,7 @@ class DropoutCell(RNNCell):
         assert 'is_test' in kwargs, "Argument 'is_test' is required"
         self.is_test = kwargs.pop('is_test')
         self.use_cudnn = use_cudnn
-        super(DropoutCell, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
         self.prepare_input = internal_cell.prepare_input
         self.get_output_state_index = internal_cell.get_output_state_index
@@ -891,7 +886,7 @@ class DropoutCell(RNNCell):
         return output
 
 
-class MultiRNNCellInitializer(object):
+class MultiRNNCellInitializer:
     def __init__(self, cells):
         self.cells = cells
 
@@ -912,7 +907,7 @@ class MultiRNNCell(RNNCell):
     '''
     Multilayer RNN via the composition of RNNCell instance.
 
-    It is the resposibility of calling code to ensure the compatibility
+    It is the responsibility of calling code to ensure the compatibility
     of the successive layers in terms of input/output dimensiality, etc.,
     and to ensure that their blobs do not have name conflicts, typically by
     creating the cells with names that specify layer number.
@@ -935,7 +930,7 @@ class MultiRNNCell(RNNCell):
 
         forward_only: used to construct inference-only network.
         '''
-        super(MultiRNNCell, self).__init__(**kwargs)
+        super().__init__(**kwargs)
         self.cells = cells
 
         if residual_output_layers is None:
@@ -1120,7 +1115,7 @@ class AttentionCell(RNNCell):
         attention_memory_optimization,
         **kwargs
     ):
-        super(AttentionCell, self).__init__(**kwargs)
+        super().__init__(**kwargs)
         self.encoder_output_dim = encoder_output_dim
         self.encoder_outputs = encoder_outputs
         self.encoder_lengths = encoder_lengths
@@ -1417,7 +1412,7 @@ class LSTMWithAttentionCell(AttentionCell):
             forward_only=False,
             drop_states=False,
         )
-        super(LSTMWithAttentionCell, self).__init__(
+        super().__init__(
             encoder_output_dim=encoder_output_dim,
             encoder_outputs=encoder_outputs,
             encoder_lengths=encoder_lengths,
@@ -1456,7 +1451,7 @@ class MILSTMWithAttentionCell(AttentionCell):
             forward_only=False,
             drop_states=False,
         )
-        super(MILSTMWithAttentionCell, self).__init__(
+        super().__init__(
             encoder_output_dim=encoder_output_dim,
             encoder_outputs=encoder_outputs,
             decoder_cell=decoder_cell,
@@ -1644,9 +1639,16 @@ class UnrolledCell(RNNCell):
                 axis=0)[0]
             for full_output in all_states
         ]
+        # Interleave the state values similar to
+        #
+        #   x = [1, 3, 5]
+        #   y = [2, 4, 6]
+        #   z = [val for pair in zip(x, y) for val in pair]
+        #   # z is [1, 2, 3, 4, 5, 6]
+        #
+        # and returns it as outputs
         outputs = tuple(
-            six.next(it) for it in
-            itertools.cycle([iter(all_states), iter(states)])
+            state for state_pair in zip(all_states, states) for state in state_pair
         )
         outputs_without_grad = set(range(len(outputs))) - set(
             outputs_with_grads)
@@ -1672,7 +1674,7 @@ def InitFromLSTMParams(lstm_pblobs, param_values):
     '''
     weight_params = GetLSTMParamNames()['weights']
     bias_params = GetLSTMParamNames()['biases']
-    for input_type in viewkeys(param_values):
+    for input_type in param_values.keys():
         weight_values = [
             param_values[input_type][w].flatten()
             for w in weight_params

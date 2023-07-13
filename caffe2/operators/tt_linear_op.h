@@ -25,7 +25,7 @@ class TTLinearOp final : public Operator<Context> {
         out_sizes_(this->template GetRepeatedArgument<int>("out_sizes")),
         tt_ranks_(this->template GetRepeatedArgument<int>("tt_ranks")),
         Y_temp_(unique_ptr<Blob>(new Blob())) {}
-  ~TTLinearOp() {}
+  ~TTLinearOp() override {}
 
   bool RunOnDevice() override {
     const auto& X = Input(0); // Input array
@@ -126,7 +126,7 @@ class TTLinearOp final : public Operator<Context> {
 
     // Check that output size of Y is the element-wise product of out_sizes
     int prod_out_sizes = 1;
-    for (int i = 0; i < out_sizes_.size(); i++) {
+    for (const auto i : c10::irange(out_sizes_.size())) {
       prod_out_sizes *= out_sizes_[i];
     }
     CAFFE_ENFORCE(
@@ -180,7 +180,7 @@ class TTLinearGradientOp : public Operator<Context> {
   template <class... Args>
   explicit TTLinearGradientOp(Args&&... args)
       : Operator<Context>(std::forward<Args>(args)...) {}
-  ~TTLinearGradientOp() {}
+  ~TTLinearGradientOp() override {}
 
   bool RunOnDevice() override {
     return false;

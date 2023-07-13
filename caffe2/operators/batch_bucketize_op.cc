@@ -69,7 +69,7 @@ The lengths is a 1D tensor that splits the following 'boundaries' argument.
 The boundaries is a 1D tensor containing the border list for each feature.
 
 With in each batch, `indices` should not have duplicate number,
-and the number of elements in `indices` should be less than or euqal to `D`.
+and the number of elements in `indices` should be less than or equal to `D`.
 Each element in `lengths` vector (lengths[`i`]) represents
 the number of boundaries in the sub border list.
 The sum of all elements in `lengths` must be equal to the size of  `boundaries`.
@@ -117,7 +117,7 @@ after running this operator.
         "Flatten tensor, dimension has to match the sum of lengths")
     .Output(
         0,
-        "bucktized_feat",
+        "bucketized_feat",
         "2-D dense tensor, with 1st dim = float_features.dim(0), 2nd dim = size(indices)"
         "in the arg list, the tensor is of the same data type as `feature`.");
 

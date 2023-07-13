@@ -1,9 +1,9 @@
 ## @package store_ops_test_util
 # Module caffe2.distributed.store_ops_test_util
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
+
+
+
+
 
 from multiprocessing import Process, Queue
 
@@ -12,7 +12,7 @@ import numpy as np
 from caffe2.python import core, workspace
 
 
-class StoreOpsTests(object):
+class StoreOpsTests:
     @classmethod
     def _test_set_get(cls, queue, create_store_handler_fn, index, num_procs):
         store_handler = create_store_handler_fn()

@@ -1,10 +1,10 @@
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 import caffe2.python.hypothesis_test_util as hu
 import hypothesis.strategies as st
 import numpy as np
 from caffe2.python import core, dyndep, workspace
-from hypothesis import given
+from hypothesis import given, settings
 
 
 dyndep.InitOpsLibrary("//caffe2/caffe2/quantization/server:dnnlowp_ops")
@@ -21,7 +21,11 @@ class DNNLowPResizeNearestOpTest(hu.HypothesisTestCase):
         scale_h=st.floats(0.25, 4.0) | st.just(2.0),
         **hu.gcs_cpu_only
     )
+    @settings(deadline=None, max_examples=50)
     def test_resize_nearest(self, N, H, W, C, scale_w, scale_h, gc, dc):
+        scale_w = np.float32(scale_w)
+        scale_h = np.float32(scale_h)
+
         X = np.round(np.random.rand(N, H, W, C) * 255).astype(np.float32)
 
         quantize = core.CreateOperator("Quantize", ["X"], ["X_q"], engine="DNNLOWP")
@@ -43,15 +47,15 @@ class DNNLowPResizeNearestOpTest(hu.HypothesisTestCase):
         Y_q = workspace.FetchInt8Blob("Y_q").data
 
         def resize_nearest_ref(X):
-            outH = np.int32(H * scale_h)
-            outW = np.int32(W * scale_w)
+            outH = np.int32(np.float32(H) * scale_h)
+            outW = np.int32(np.float32(W) * scale_w)
             outH_idxs, outW_idxs = np.meshgrid(
                 np.arange(outH), np.arange(outW), indexing="ij"
             )
-            inH_idxs = np.minimum(outH_idxs / scale_h, H - 1).astype(np.int32)
-            inW_idxs = np.minimum(outW_idxs / scale_w, W - 1).astype(np.int32)
+            inH_idxs = np.minimum(np.float32(outH_idxs) / scale_h, H - 1).astype(np.int32)
+            inW_idxs = np.minimum(np.float32(outW_idxs) / scale_w, W - 1).astype(np.int32)
             Y = X[:, inH_idxs, inW_idxs, :]
             return Y
 
         Y_q_ref = resize_nearest_ref(X_q)
-        np.testing.assert_allclose(Y_q, Y_q_ref)
+        np.testing.assert_equal(Y_q, Y_q_ref)

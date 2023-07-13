@@ -1,9 +1,9 @@
 ## @package beam_search
 # Module caffe2.python.models.seq2seq.beam_search
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
+
+
+
+
 
 from collections import namedtuple
 from caffe2.python import core
@@ -11,7 +11,7 @@ import caffe2.python.models.seq2seq.seq2seq_util as seq2seq_util
 from caffe2.python.models.seq2seq.seq2seq_model_helper import Seq2SeqModelHelper
 
 
-class BeamSearchForwardOnly(object):
+class BeamSearchForwardOnly:
     """
     Class generalizing forward beam search for seq2seq models.
 

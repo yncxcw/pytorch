@@ -5,7 +5,8 @@ set -ex
 UNKNOWN=()
 
 # defaults
-PARALLEL=0
+PARALLEL=1
+export TORCH_ONNX_EXPERIMENTAL_RUNTIME_TYPE_CHECK=ERRORS
 
 while [[ $# -gt 0 ]]
 do
@@ -23,11 +24,8 @@ do
 done
 set -- "${UNKNOWN[@]}" # leave UNKNOWN
 
-pip install pytest scipy hypothesis
-
-if [[ $PARALLEL == 1 ]]; then
-    pip install pytest-xdist
-fi
+# allows coverage to run w/o failing due to a missing plug-in
+pip install -e tools/coverage_plugins_package
 
 # realpath might not be available on MacOS
 script_path=$(python -c "import os; import sys; print(os.path.realpath(sys.argv[1]))" "${BASH_SOURCE[0]}")
@@ -38,29 +36,19 @@ test_paths=(
 
 args=()
 args+=("-v")
-if [[ $PARALLEL == 1 ]]; then
-  args+=("-n")
-  args+=("3")
+args+=("--cov")
+args+=("--cov-report")
+args+=("xml:test/coverage.xml")
+args+=("--cov-append")
+
+time python "${top_dir}/test/run_test.py" --onnx --shard "$SHARD_NUMBER" 2 --verbose
+
+if [[ "$SHARD_NUMBER" == "2" ]]; then
+  # xdoctests on onnx
+  xdoctest torch.onnx --style=google --options="+IGNORE_WHITESPACE"
 fi
 
-# Skipped tests
-args+=("-k")
-args+=('not (TestOperators and test_full_like) and not (TestOperators and test_zeros_like) and not (TestOperators and test_ones_like) and not (TestModels and test_vgg16) and not (TestModels and test_vgg16_bn) and not (TestModels and test_vgg19) and not (TestModels and test_vgg19_bn)')
-
-# These exclusions are for tests that take a long time / a lot of GPU
-# memory to run; they should be passing (and you will test them if you
-# run them locally
-pytest "${args[@]}" \
-  --ignore "$top_dir/test/onnx/test_pytorch_onnx_onnxruntime.py" \
-  --ignore "$top_dir/test/onnx/test_custom_ops.py" \
-  --ignore "$top_dir/test/onnx/test_models_onnxruntime.py" \
-  "${test_paths[@]}"
-
-# onnxruntime only support py3
-# "Python.h" not found in py2, needed by TorchScript custom op compilation.
-if [[ "$BUILD_ENVIRONMENT" == *py3* ]]; then
-  pytest "${args[@]}" \
-    "$top_dir/test/onnx/test_pytorch_onnx_onnxruntime.py" \
-    "$top_dir/test/onnx/test_custom_ops.py" \
-    "$top_dir/test/onnx/test_models_onnxruntime.py"
+# Our CI expects both coverage.xml and .coverage to be within test/
+if [ -d .coverage ]; then
+  mv .coverage test/.coverage
 fi

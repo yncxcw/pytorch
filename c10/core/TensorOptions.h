@@ -1,21 +1,47 @@
 #pragma once
 
-#include <c10/core/DefaultDtype.h>
 #include <c10/core/Backend.h>
-#include <c10/core/Layout.h>
-#include <c10/core/ScalarType.h>
+#include <c10/core/DefaultDtype.h>
 #include <c10/core/Device.h>
-#include <c10/core/DispatchKeySet.h>
+#include <c10/core/Layout.h>
+#include <c10/core/MemoryFormat.h>
+#include <c10/core/ScalarType.h>
+#include <c10/core/ScalarTypeToTypeMeta.h>
 
-#include <c10/util/Optional.h>
-#include <c10/util/C++17.h>
 #include <c10/macros/Macros.h>
+#include <c10/util/Optional.h>
 
-#include <cstddef>
 #include <iosfwd>
 #include <utility>
 
 namespace c10 {
+
+DispatchKey computeDispatchKey(
+    c10::optional<ScalarType> dtype,
+    c10::optional<Layout> layout,
+    c10::optional<Device> device);
+
+inline ScalarType dtype_or_default(c10::optional<ScalarType> dtype) {
+  return value_or_else(dtype, [] { return get_default_dtype_as_scalartype(); });
+}
+
+inline caffe2::TypeMeta dtype_or_default(
+    c10::optional<caffe2::TypeMeta> dtype) {
+  return value_or_else(dtype, [] { return get_default_dtype(); });
+}
+
+inline Layout layout_or_default(c10::optional<Layout> layout) {
+  return layout.value_or(kStrided);
+}
+
+inline Device device_or_default(c10::optional<Device> device) {
+  return value_or_else(device, [] { return Device(kCPU); });
+}
+
+inline bool pinned_memory_or_default(c10::optional<bool> pinned_memory) {
+  return pinned_memory.value_or(false);
+}
+
 /// A class to encapsulate construction axes of an Tensor.  TensorOptions was
 /// designed to support the Python style API for specifying construction options
 /// on factory functions, e.g.,
@@ -40,7 +66,8 @@ namespace c10 {
 ///     at::dtype(at::kInt)
 ///
 /// Additionally, anywhere a TensorOptions is expected, you can directly
-/// pass at::kCUDA / at::kInt, and it will implicitly convert to a TensorOptions.
+/// pass at::kCUDA / at::kInt, and it will implicitly convert to a
+/// TensorOptions.
 ///
 /// Here are some recommended ways to create a 2x2 tensor of zeros
 /// with certain properties.  These all *implicitly* make use of
@@ -75,7 +102,7 @@ namespace c10 {
 /// `torch.device` object (e.g., "cuda:1" can be passed to everywhere a
 /// `torch.device("cuda:1")` is accepted). To support the syntax
 /// `at::empty({10}, {kCUDA, 1})` and `tensor.to(kCUDA)`, we need to make sure
-/// that `TensorOptions` is implicitly constructible with any argments that a
+/// that `TensorOptions` is implicitly constructible with any arguments that a
 /// `Device` can constructed from. So we have,
 ///
 ///    /* implicit */ TensorOptions(T&& device) : TensorOptions() {
@@ -83,30 +110,35 @@ namespace c10 {
 ///    }
 ///
 ///    template <typename... Args,
-///             typename = std::enable_if_t<std::is_constructible<Device, Args&&...>::value>>
+///             typename = std::enable_if_t<std::is_constructible<Device,
+///             Args&&...>::value>>
 ///    /* implicit */  TensorOptions(Args&&... args)
 ///     : TensorOptions(Device(std::forward<Args>(args)...)) {}
 ///
 ///
 /// But this will be problematic. Consider this: `TensorOptions({kCUDA, 1})`.
-/// Compiler will compain about ambiguity between the copy constructor and the
+/// Compiler will complain about ambiguity between the copy constructor and the
 /// `Device` constructor because `{kCUDA, 1}` can be converted to both a
 /// `TensorOption` and a `Device`.
 ///
 /// To get around this, we templatize the `Device` constructor. Since overload
 /// resolution is done before template resolution, our problem is solved.
 
+DispatchKey computeDispatchKey(
+    optional<ScalarType> dtype,
+    optional<Layout> layout,
+    optional<Device> device);
 
 struct C10_API TensorOptions {
   TensorOptions()
-    : requires_grad_(false)
-    , pinned_memory_(false)
-    , has_device_(false)
-    , has_dtype_(false)
-    , has_layout_(false)
-    , has_requires_grad_(false)
-    , has_pinned_memory_(false)
-    {}
+      : requires_grad_(false),
+        pinned_memory_(false),
+        has_device_(false),
+        has_dtype_(false),
+        has_layout_(false),
+        has_requires_grad_(false),
+        has_pinned_memory_(false),
+        has_memory_format_(false) {}
 
   /// Constructs a `TensorOptions` object with the given layout.
   /* implicit */ TensorOptions(Layout layout) : TensorOptions() {
@@ -115,8 +147,9 @@ struct C10_API TensorOptions {
 
   /// Constructs a `TensorOptions` object with the given device.
   /// See NOTE [ TensorOptions Constructors ] on why this is templatized.
-  template<typename T,
-           typename = std::enable_if_t<std::is_same<std::decay_t<T>, Device>::value>>
+  template <
+      typename T,
+      typename = std::enable_if_t<std::is_same<std::decay_t<T>, Device>::value>>
   /* implicit */ TensorOptions(T&& device) : TensorOptions() {
     this->set_device(std::forward<T>(device));
   }
@@ -129,10 +162,12 @@ struct C10_API TensorOptions {
   /// NB: Ideally we only allow implicit constructors here. But there is no easy
   ///     way to detect them. So we have this one that allows explicit
   ///     constructors too.
-  template <typename... Args,
-            typename = std::enable_if_t<std::is_constructible<Device, Args&&...>::value>>
-   /* implicit */ TensorOptions(Args&&... args)
-    : TensorOptions(Device(std::forward<Args>(args)...)) {}
+  template <
+      typename... Args,
+      typename =
+          std::enable_if_t<std::is_constructible<Device, Args&&...>::value>>
+  /* implicit */ TensorOptions(Args&&... args)
+      : TensorOptions(Device(std::forward<Args>(args)...)) {}
 
   /// Constructs a `TensorOptions` object with the given dtype.
   /* implicit */ TensorOptions(caffe2::TypeMeta dtype) : TensorOptions() {
@@ -144,9 +179,15 @@ struct C10_API TensorOptions {
     this->set_dtype(dtype);
   }
 
+  /// Constructs a `TensorOptions` object with the given memory format.
+  /* implicit */ TensorOptions(MemoryFormat memory_format) : TensorOptions() {
+    set_memory_format(memory_format);
+  }
+
   /// Return a copy of `TensorOptions` with `device` set to the given one, or
   /// cleared if `device` is `nullopt`.
-  C10_NODISCARD TensorOptions device(c10::optional<Device> device) const noexcept {
+  C10_NODISCARD TensorOptions
+  device(c10::optional<Device> device) const noexcept {
     TensorOptions r = *this;
     r.set_device(device);
     return r;
@@ -155,9 +196,10 @@ struct C10_API TensorOptions {
   /// Return a copy of `TensorOptions` with `device` set to the given one.
   /// (This overload ensures that variadic template c10::optional constructor
   /// for Device work correctly.)
-  template<typename ... Args>
+  template <typename... Args>
   C10_NODISCARD TensorOptions device(Args&&... args) const noexcept {
-    return device(c10::optional<Device>(c10::in_place, std::forward<Args>(args)...));
+    return device(
+        c10::optional<Device>(c10::in_place, std::forward<Args>(args)...));
   }
 
   /// Return a copy of `TensorOptions`, but with device set to CUDA, and the
@@ -165,19 +207,22 @@ struct C10_API TensorOptions {
   ///
   /// TODO: This function encourages bad behavior (assuming CUDA is
   /// the only device that matters).  Get rid of it / rename it.
-  C10_NODISCARD TensorOptions device_index(int16_t device_index) const noexcept {
+  C10_NODISCARD TensorOptions
+  device_index(c10::DeviceIndex device_index) const noexcept {
     return device(Device::Type::CUDA, device_index);
   }
 
   /// Return a copy of `TensorOptions` with `dtype` set to the given one.
-  C10_NODISCARD TensorOptions dtype(c10::optional<caffe2::TypeMeta> dtype) const noexcept {
+  C10_NODISCARD TensorOptions
+  dtype(c10::optional<caffe2::TypeMeta> dtype) const noexcept {
     TensorOptions r = *this;
     r.set_dtype(dtype);
     return r;
   }
 
   // legacy function to support ScalarType
-  C10_NODISCARD TensorOptions dtype(c10::optional<ScalarType> dtype) const noexcept {
+  C10_NODISCARD TensorOptions
+  dtype(c10::optional<ScalarType> dtype) const noexcept {
     TensorOptions r = *this;
     r.set_dtype(dtype);
     return r;
@@ -192,29 +237,40 @@ struct C10_API TensorOptions {
   }
 
   /// Sets the layout of the `TensorOptions`.
-  C10_NODISCARD TensorOptions layout(c10::optional<Layout> layout) const noexcept {
+  C10_NODISCARD TensorOptions
+  layout(c10::optional<Layout> layout) const noexcept {
     TensorOptions r = *this;
     r.set_layout(layout);
     return r;
   }
 
   /// Sets the `requires_grad` property of the `TensorOptions`.
-  C10_NODISCARD TensorOptions requires_grad(c10::optional<bool> requires_grad) const noexcept {
+  C10_NODISCARD TensorOptions
+  requires_grad(c10::optional<bool> requires_grad) const noexcept {
     TensorOptions r = *this;
     r.set_requires_grad(requires_grad);
     return r;
   }
 
   /// Sets the `pinned_memory` property on the `TensorOptions`.
-  C10_NODISCARD TensorOptions pinned_memory(c10::optional<bool> pinned_memory) const noexcept {
+  C10_NODISCARD TensorOptions
+  pinned_memory(c10::optional<bool> pinned_memory) const noexcept {
     TensorOptions r = *this;
     r.set_pinned_memory(pinned_memory);
     return r;
   }
 
+  /// Sets the `memory_format` property on `TensorOptions`.
+  C10_NODISCARD TensorOptions
+  memory_format(c10::optional<MemoryFormat> memory_format) const noexcept {
+    TensorOptions r = *this;
+    r.set_memory_format(memory_format);
+    return r;
+  }
+
   /// Returns the device of the `TensorOptions`.
   Device device() const noexcept {
-    return has_device_ ? device_ : Device(kCPU);
+    return device_or_default(device_opt());
   }
 
   /// Returns whether the device is specified.
@@ -235,7 +291,7 @@ struct C10_API TensorOptions {
 
   /// Returns the dtype of the `TensorOptions`.
   caffe2::TypeMeta dtype() const noexcept {
-    return has_dtype_ ? dtype_ : get_default_dtype();
+    return dtype_or_default(dtype_opt());
   }
 
   /// Returns whether the dtype is specified.
@@ -251,7 +307,7 @@ struct C10_API TensorOptions {
 
   /// Returns the layout of the `TensorOptions`.
   Layout layout() const noexcept {
-    return has_layout_ ? layout_ : kStrided;
+    return layout_or_default(layout_opt());
   }
 
   /// Returns whether the layout is specified.
@@ -284,7 +340,7 @@ struct C10_API TensorOptions {
 
   /// Returns the `pinned_memory` property of the `TensorOptions`.
   bool pinned_memory() const noexcept {
-    return has_pinned_memory_ ? pinned_memory_ : false;
+    return pinned_memory_or_default(pinned_memory_opt());
   }
 
   /// Returns whether the `pinned_memory` is specified.
@@ -297,20 +353,41 @@ struct C10_API TensorOptions {
     return layout_ == c10::Layout::Sparse;
   }
 
+  bool is_sparse_csr() const {
+    return layout_ == c10::Layout::SparseCsr;
+  }
+
   // For compatibility with legacy tensor.type() comparisons
   bool type_equal(const TensorOptions& other) const {
-    return backend() == other.backend() && typeMetaToScalarType(dtype_) == typeMetaToScalarType(other.dtype());
+    return computeDispatchKey() == other.computeDispatchKey() &&
+        typeMetaToScalarType(dtype_) == typeMetaToScalarType(other.dtype());
   }
 
   /// Returns the `pinned_memory` property of the `TensorOptions`, or
   /// `c10::nullopt` if `pinned_memory` is not specified.
   c10::optional<bool> pinned_memory_opt() const noexcept {
-    return has_pinned_memory_ ? c10::make_optional(pinned_memory_) : c10::nullopt;
+    return has_pinned_memory_ ? c10::make_optional(pinned_memory_)
+                              : c10::nullopt;
+  }
+
+  /// Returns whether the `memory_layout` is specified
+  bool has_memory_format() const noexcept {
+    return has_memory_format_;
+  }
+
+  // NB: memory_format() getter is PURPOSELY not defined, as the default
+  // behavior of memory_format varies from function to function.
+
+  /// Returns the `memory_layout` property of `TensorOptions, or
+  /// `c10::nullopt` if `memory_format` is not specified.
+  c10::optional<MemoryFormat> memory_format_opt() const noexcept {
+    return has_memory_format_ ? c10::make_optional(memory_format_)
+                              : c10::nullopt;
   }
 
   // Resolves the ATen backend specified by the current construction axes.
   // TODO: Deprecate this
-  Backend backend() const noexcept {
+  Backend backend() const {
     return at::dispatchKeyToBackend(computeDispatchKey());
   }
 
@@ -325,82 +402,43 @@ struct C10_API TensorOptions {
   /// device guard.
   ///
   TensorOptions merge_in(TensorOptions options) const noexcept {
-    TensorOptions r = options;
-    if (!r.has_device()) r.set_device(device());
-    if (!r.has_dtype()) r.set_dtype(dtype());
-    if (!r.has_layout()) r.set_layout(layout());
+    TensorOptions merged = *this;
+    if (options.has_device())
+      merged.set_device(options.device_opt());
+    if (options.has_dtype())
+      merged.set_dtype(options.dtype_opt());
+    if (options.has_layout())
+      merged.set_layout(options.layout_opt());
     // NB: requires grad is right biased; not a logical AND/OR!
-    if (!r.has_requires_grad()) r.set_requires_grad(requires_grad());
-    if (!r.has_pinned_memory()) r.set_pinned_memory(pinned_memory());
-    return r;
+    if (options.has_requires_grad())
+      merged.set_requires_grad(options.requires_grad_opt());
+    if (options.has_pinned_memory())
+      merged.set_pinned_memory(options.pinned_memory_opt());
+    if (options.has_memory_format())
+      merged.set_memory_format(options.memory_format_opt());
+    return merged;
   }
 
-  // Resolves the tensor type set specified by the current construction axes.
-  DispatchKeySet key_set() const noexcept {
-    return DispatchKeySet(computeDispatchKey()).add(DispatchKey::VariableTensorId);
-  }
-
-  inline DispatchKey computeDispatchKey() const {
-    switch (layout()) {
-      case Layout::Strided:
-        switch (device().type()) {
-          case DeviceType::CPU: {
-            auto dtype_tmp = typeMetaToScalarType(dtype());
-            if (isComplexType(dtype_tmp)) {
-              return DispatchKey::ComplexCPUTensorId;
-            }
-            if (isQIntType(dtype_tmp)) {
-              return DispatchKey::QuantizedCPUTensorId;
-            }
-            return DispatchKey::CPUTensorId;
-            }
-          case DeviceType::CUDA:
-            if (isComplexType(typeMetaToScalarType(dtype()))) {
-              return DispatchKey::ComplexCUDATensorId;
-            }
-            return DispatchKey::CUDATensorId;
-          case DeviceType::MKLDNN:
-            return DispatchKey::MKLDNNTensorId;
-          case DeviceType::OPENGL:
-            return DispatchKey::OpenGLTensorId;
-          case DeviceType::OPENCL:
-            return DispatchKey::OpenCLTensorId;
-          case DeviceType::IDEEP:
-            return DispatchKey::IDEEPTensorId;
-          case DeviceType::HIP:
-            return DispatchKey::HIPTensorId;
-          case DeviceType::MSNPU:
-            return DispatchKey::MSNPUTensorId;
-          case DeviceType::XLA:
-            return DispatchKey::XLATensorId;
-          default:
-            AT_ERROR("Unsupported device type for dense layout: ", device().type());
-        }
-      case Layout::Sparse:
-        switch (device().type()) {
-          case DeviceType::CPU:
-            return DispatchKey::SparseCPUTensorId;
-          case DeviceType::CUDA:
-            return DispatchKey::SparseCUDATensorId;
-          case DeviceType::HIP:
-            return DispatchKey::SparseHIPTensorId;
-          default:
-            AT_ERROR("Unsupported device type for sparse layout: ", device().type());
-        }
-      case Layout::Mkldnn:
-        switch (device().type()) {
-          case DeviceType::CPU:
-            return DispatchKey::MkldnnCPUTensorId;
-          default:
-            AT_ERROR("Unsupported device type for mkldnn layout: ", device().type());
-        }
-      default:
-        AT_ERROR("Unsupported layout: ", layout());
+  // TODO remove after TensorOptions rationalization
+  TensorOptions merge_memory_format(
+      c10::optional<MemoryFormat> optional_memory_format) const noexcept {
+    TensorOptions merged = *this;
+    if (optional_memory_format.has_value()) {
+      merged.set_memory_format(*optional_memory_format);
     }
+    return merged;
+  }
+
+  // INVARIANT: computeDispatchKey returns only the subset of dispatch keys for
+  // which dispatchKeyToBackend is injective, if it is defined at all  (for
+  // the most part, this just means that this function never returns an
+  // Autograd key)
+  DispatchKey computeDispatchKey() const {
+    return c10::computeDispatchKey(
+        optTypeMetaToScalarType(dtype_opt()), layout_opt(), device_opt());
   }
 
  private:
-
   // These methods are currently private because I'm not sure if it's wise
   // to actually publish them.  They are methods because I need them in
   // the constructor and the functional API implementation.
@@ -473,35 +511,53 @@ struct C10_API TensorOptions {
     }
   }
 
+  /// Mutably set the `memory_Format` property of `TensorOptions`.
+  void set_memory_format(c10::optional<MemoryFormat> memory_format) & noexcept {
+    if (memory_format) {
+      memory_format_ = *memory_format;
+      has_memory_format_ = true;
+    } else {
+      has_memory_format_ = false;
+    }
+  }
+
   // WARNING: If you edit TensorOptions to add more options, you
-  // must adjust the implementation of Tensor::options
+  // may need to adjust the implementation of Tensor::options.
+  // The criteria for whether or not Tensor::options must be adjusted
+  // is whether or not the new option you added should preserved
+  // by functions such as empty_like(); if it should be preserved,
+  // you must adjust options().
+  //
+  // TODO: MemoryFormat is not implemented in this way
 
   // NB: We didn't use c10::optional here, because then we can't pack
   // the has_***_ boolean fields.
 
-  caffe2::TypeMeta dtype_ = caffe2::TypeMeta::Make<float>(); // 64-bit
-  Device device_ = at::kCPU; // 32-bit
+  Device device_ = at::kCPU; // 16-bit
+  caffe2::TypeMeta dtype_ = caffe2::TypeMeta::Make<float>(); // 16-bit
   Layout layout_ = at::kStrided; // 8-bit
+  MemoryFormat memory_format_ = MemoryFormat::Contiguous; // 8-bit
 
   // Bitmask required here to get this to fit inside 32 bits (or even 64 bits,
   // for that matter)
 
-  bool requires_grad_     : 1;
-  bool pinned_memory_     : 1;
+  bool requires_grad_ : 1;
+  bool pinned_memory_ : 1;
 
-
-  bool has_device_        : 1;
-  bool has_dtype_         : 1;
-  bool has_layout_        : 1;
+  bool has_device_ : 1;
+  bool has_dtype_ : 1;
+  bool has_layout_ : 1;
   bool has_requires_grad_ : 1;
   bool has_pinned_memory_ : 1;
+  bool has_memory_format_ : 1;
 };
 
 // We should aspire to fit in one machine-size word; but a size greater than two
 // words is too much.  (We are doing terribly on 32-bit archs, where we require
 // three machine size words to store tensor options.  Eek!)
-static_assert( sizeof(TensorOptions) <= sizeof(int64_t) * 2,
-               "TensorOptions must fit in 128-bits" );
+static_assert(
+    sizeof(TensorOptions) <= sizeof(int64_t) * 2,
+    "TensorOptions must fit in 128-bits");
 
 /// Convenience function that returns a `TensorOptions` object with the `dtype`
 /// set to the given one.
@@ -523,19 +579,26 @@ inline TensorOptions layout(Layout layout) {
 /// Convenience function that returns a `TensorOptions` object with the `device`
 /// set to the given one.
 inline TensorOptions device(Device device) {
-  return TensorOptions().device(std::move(device));
+  return TensorOptions().device(device);
 }
 
 /// Convenience function that returns a `TensorOptions` object with the
 /// `device` set to CUDA and the `device_index` set to the given one.
 inline TensorOptions device_index(int16_t device_index) {
-  return TensorOptions().device_index(device_index);
+  return TensorOptions().device_index(
+      static_cast<c10::DeviceIndex>(device_index));
 }
 
 /// Convenience function that returns a `TensorOptions` object with the
 /// `requires_grad` set to the given one.
 inline TensorOptions requires_grad(bool requires_grad = true) {
   return TensorOptions().requires_grad(requires_grad);
+}
+
+/// Convenience function that returns a `TensorOptions` object with the
+/// `memory_format` set to the given one.
+inline TensorOptions memory_format(MemoryFormat memory_format) {
+  return TensorOptions().memory_format(memory_format);
 }
 
 C10_API std::ostream& operator<<(
@@ -547,7 +610,7 @@ inline TensorOptions dtype() {
   return dtype(caffe2::TypeMeta::Make<T>());
 }
 
-inline std::string toString(const TensorOptions options) {
+inline std::string toString(const TensorOptions& options) {
   std::ostringstream stream;
   stream << options;
   return stream.str();
@@ -555,51 +618,155 @@ inline std::string toString(const TensorOptions options) {
 
 // This is intended to be a centralized location by which we can determine
 // what an appropriate DispatchKey for a tensor is.
-//
-// This takes a TensorOptions, rather than just a DeviceType and Layout, because
-// we reserve the right to change dispatch based on *any* aspect of
-// TensorOptions.  WARNING: If you do this, you need to fix the calls
-// to computeDispatchKey in caffe2/tensor.h
-inline DispatchKey computeDispatchKey(TensorOptions options) {
-  return options.computeDispatchKey();
-}
-
-inline DeviceType computeDeviceType(DispatchKey tid) {
-  if (tid == DispatchKey::CPUTensorId) {
-    return DeviceType::CPU;
-  } else if (tid == DispatchKey::CUDATensorId) {
-    return DeviceType::CUDA;
-  } else if (tid == DispatchKey::HIPTensorId) {
-    return DeviceType::HIP;
-  } else if (tid == DispatchKey::MKLDNNTensorId) {
-    return DeviceType::MKLDNN;
-  } else if (tid == DispatchKey::OpenGLTensorId) {
-    return DeviceType::IDEEP;
-  } else if (tid == DispatchKey::OpenCLTensorId) {
-    return DeviceType::OPENCL;
-  } else if (tid == DispatchKey::IDEEPTensorId) {
-    return DeviceType::IDEEP;
-  } else if (tid == DispatchKey::HIPTensorId) {
-    return DeviceType::HIP;
-  } else if (tid == DispatchKey::MSNPUTensorId) {
-    return DeviceType::MSNPU;
-  } else if (tid == DispatchKey::XLATensorId) {
-    return DeviceType::XLA;
-  } else if (tid == DispatchKey::SparseCPUTensorId) {
-    return DeviceType::CPU;
-  } else if (tid == DispatchKey::SparseCUDATensorId) {
-    return DeviceType::CUDA;
-  } else if (tid == DispatchKey::SparseHIPTensorId) {
-    return DeviceType::HIP;
-  } else if (tid == DispatchKey::MkldnnCPUTensorId) {
-    return DeviceType::CPU;
-  } else if (tid == DispatchKey::ComplexCPUTensorId) {
-    return DeviceType::CPU;
-  } else if (tid == DispatchKey::ComplexCUDATensorId) {
-    return DeviceType::CUDA;
-  } else {
-    AT_ASSERTM(false, "Unknown DispatchKey: ", tid);
+inline DispatchKey computeDispatchKey(
+    c10::optional<ScalarType> dtype,
+    c10::optional<Layout> layout,
+    c10::optional<Device> device) {
+  const auto layout_ = layout_or_default(layout);
+  const auto device_ = device_or_default(device);
+  switch (layout_) {
+    case Layout::Strided: {
+      const auto dtype_ = dtype_or_default(dtype);
+      switch (device_.type()) {
+#define DO_CASE(device, _)                   \
+  case c10::DeviceType::device: {            \
+    if (isQIntType(dtype_)) {                \
+      return DispatchKey::Quantized##device; \
+    }                                        \
+    return DispatchKey::device;              \
+  }
+        C10_FORALL_BACKEND_DEVICE_TYPES(DO_CASE, unused)
+#undef DO_CASE
+        case c10::DeviceType::FPGA:
+          return DispatchKey::FPGA;
+        case c10::DeviceType::ORT:
+          return DispatchKey::ORT;
+        case c10::DeviceType::Vulkan:
+          return DispatchKey::Vulkan;
+        case c10::DeviceType::Metal:
+          return DispatchKey::Metal;
+        case c10::DeviceType::MKLDNN:
+        case c10::DeviceType::OPENGL:
+        case c10::DeviceType::OPENCL:
+        case c10::DeviceType::IDEEP:
+          TORCH_INTERNAL_ASSERT(
+              0,
+              "This is a grandfathered Caffe2 device type ",
+              device_.type(),
+              ", it shouldn't ever convert to a DispatchKey.  File a bug describing what you were doing if you think this is in error.");
+        default:
+          TORCH_CHECK_NOT_IMPLEMENTED(
+              false,
+              "Unsupported device type for dense layout: ",
+              device_.type());
+      }
+    }
+    case Layout::Sparse:
+      switch (device_.type()) {
+#define DO_CASE(device, _)              \
+  case c10::DeviceType::device: {       \
+    return DispatchKey::Sparse##device; \
+  }
+        C10_FORALL_BACKEND_DEVICE_TYPES(DO_CASE, unused)
+#undef DO_CASE
+        default:
+          TORCH_CHECK_NOT_IMPLEMENTED(
+              false,
+              "Unsupported device type for sparse layout: ",
+              device_.type());
+      }
+    case Layout::Mkldnn:
+      switch (device_.type()) {
+        case c10::DeviceType::CPU:
+          return DispatchKey::MkldnnCPU;
+        default:
+          TORCH_CHECK_NOT_IMPLEMENTED(
+              false,
+              "Unsupported device type for mkldnn layout: ",
+              device_.type());
+      }
+    case Layout::SparseCsr:
+    case Layout::SparseCsc:
+    case Layout::SparseBsr:
+    case Layout::SparseBsc:
+      switch (device_.type()) {
+        case c10::DeviceType::CPU:
+          return DispatchKey::SparseCsrCPU;
+        case c10::DeviceType::CUDA:
+          return DispatchKey::SparseCsrCUDA;
+        default:
+          AT_ERROR(
+              "Unsupported device type for ",
+              layout_,
+              " layout: ",
+              device_.type());
+      }
+    default:
+      TORCH_CHECK(false, "Unsupported layout: ", layout_);
   }
 }
+
+inline Layout dispatchKeyToLayout(DispatchKey dispatch_key) {
+  switch (dispatch_key) {
+#define DO_CASE(bc, _) case DispatchKey::Sparse##bc:
+    C10_FORALL_BACKEND_COMPONENTS(DO_CASE, unused)
+#undef DO_CASE
+    return Layout::Sparse;
+    case DispatchKey::SparseCsrCPU:
+    case DispatchKey::SparseCsrCUDA:
+      TORCH_CHECK(
+          false,
+          "Cannot map DispatchKey ",
+          dispatch_key,
+          " to a unique layout.");
+    case DispatchKey::MkldnnCPU:
+      return Layout::Mkldnn;
+    default:
+      return Layout::Strided;
+  }
+}
+
+inline c10::DeviceType dispatchKeyToDeviceType(DispatchKey dispatch_key) {
+  switch (dispatch_key) {
+    // stuff that's real
+#define DO_CASE(suffix, prefix)     \
+  case DispatchKey::prefix##suffix: \
+    return c10::DeviceType::suffix;
+#define DO_CASES(_, prefix) C10_FORALL_BACKEND_DEVICE_TYPES(DO_CASE, prefix)
+    C10_FORALL_FUNCTIONALITY_KEYS(DO_CASES)
+#undef DO_CASES
+#undef DO_CASE
+
+    case DispatchKey::MkldnnCPU:
+      return c10::DeviceType::CPU;
+    case DispatchKey::Vulkan:
+      return c10::DeviceType::Vulkan;
+
+    case DispatchKey::ORT:
+      return c10::DeviceType::ORT;
+    default:
+      TORCH_CHECK(
+          false,
+          "DispatchKey ",
+          dispatch_key,
+          " doesn't correspond to a device");
+  }
+}
+
+inline TensorOptions dispatchKeyToTensorOptions(DispatchKey dispatch_key) {
+  return TensorOptions()
+      .layout(dispatchKeyToLayout(dispatch_key))
+      .device(dispatchKeyToDeviceType(dispatch_key));
+}
+
+namespace detail {
+inline bool backend_supports_empty_operator(const TensorOptions& options) {
+  // Quantized backends don't support at::empty().
+  // They have separate operators like at::empty_quantized() that take in
+  // extra information about how to quantize the tensor.
+  return !isQIntType(typeMetaToScalarType(options.dtype()));
+}
+
+} // namespace detail
 
 } // namespace c10

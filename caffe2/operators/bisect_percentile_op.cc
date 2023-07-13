@@ -15,7 +15,7 @@ OPERATOR_SCHEMA(BisectPercentile)
 
     For each feature, we also need additional information regarding the feature
     value distribution.
-    There are several vectors to keep data to percentile mappping information
+    There are several vectors to keep data to percentile mapping information
     as arguments (context):
     1. feature raw values (R)
     2. feature percentile mapping (P)
@@ -46,7 +46,7 @@ OPERATOR_SCHEMA(BisectPercentile)
     R_2 = [0.3, 1.2];
     We will build R = [0.1, 0.4, 0.5, 0.3, 1.2]; besides, we have
     lengths = [3, 2]
-    to indicate the boundries of the percentile information.
+    to indicate the boundaries of the percentile information.
 
 )DOC")
     .Arg(

@@ -1,13 +1,13 @@
 ## @package parser
 # Module caffe2.python.docs.parser
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
+
+
+
+
 import re
 
 
-class Parser(object):
+class Parser:
     # List of tuples (regex_str, lambda(regex_match, formatter))
     # If a lambda returns True it will be called repeatedly with replacement
     # otherwise it will only be called on text that hasn't been parsed yet.

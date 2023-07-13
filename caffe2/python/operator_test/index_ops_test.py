@@ -1,7 +1,7 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
+
+
+
+
 from caffe2.python import core, workspace
 from caffe2.python.test_util import TestCase
 import numpy as np
@@ -56,7 +56,7 @@ class TestIndexOps(TestCase):
             ['index'],
             ['index_size']))
         size = workspace.FetchBlob('index_size')
-        self.assertEquals(size, 6)
+        self.assertEqual(size, 6)
 
         workspace.RunOperatorOnce(core.CreateOperator(
             'IndexStore',
@@ -89,7 +89,7 @@ class TestIndexOps(TestCase):
             ['index2'],
             ['index2_size']))
         index2_size = workspace.FetchBlob('index2_size')
-        self.assertEquals(index2_size, 5)
+        self.assertEqual(index2_size, 5)
 
         # test serde
         with tempfile.NamedTemporaryFile() as tmp:

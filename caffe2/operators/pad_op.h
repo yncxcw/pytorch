@@ -16,7 +16,7 @@ enum class PadMode {
   EDGE = 2, // pads with the edge values, with string "edge"
 };
 
-CAFFE2_API PadMode StringToPadMode(const string&);
+TORCH_API PadMode StringToPadMode(const string&);
 
 template <typename T, class Context>
 class PadImageOp final : public ConvPoolOpBase<Context> {
@@ -42,7 +42,7 @@ class PadImageOp final : public ConvPoolOpBase<Context> {
     // output size.
     kernel_.assign(pads_.size() / 2, 1);
   }
-  ~PadImageOp() {}
+  ~PadImageOp() override {}
 
   bool RunOnDeviceWithOrderNCHW() override;
   bool RunOnDeviceWithOrderNHWC() override;
@@ -78,7 +78,7 @@ class PadImageGradientOp final : public ConvPoolOpBase<Context> {
     // output size.
     kernel_.assign(pads_.size() / 2, 1);
   }
-  ~PadImageGradientOp() {}
+  ~PadImageGradientOp() override {}
 
   bool RunOnDeviceWithOrderNCHW() override;
   bool RunOnDeviceWithOrderNHWC() override;

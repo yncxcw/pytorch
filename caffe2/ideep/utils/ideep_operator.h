@@ -40,7 +40,7 @@ class IDEEPOperator : public OperatorBase {
         order_(StringToStorageOrder(
             OperatorBase::GetSingleArgument<string>("order", "NCHW"))) {
   }
-  virtual ~IDEEPOperator() {}
+  ~IDEEPOperator() override {}
 
   inline const ideep::tensor& Input(int index) {
     return OperatorBase::template Input<ideep::tensor>(index);
@@ -62,8 +62,7 @@ class IDEEPOperator : public OperatorBase {
       StopAllObservers();
       return result;
     } catch (EnforceNotMet& err) {
-      err.AppendMessage(getErrorMsg());
-      throw;
+      TORCH_RETHROW(err, getErrorMsg());
     } catch (ideep::error& e) {
       LOG(ERROR) << "IDEEP error:" << e.message;
       throw;
@@ -115,7 +114,7 @@ class IDEEPOperator : public OperatorBase {
 #define USE_SIMPLE_IDEEP_CTOR_DTOR(name)                                       \
   name(const OperatorDef& operator_def, Workspace* ws)                         \
       : IDEEPOperator(operator_def, ws) {}                                     \
-  virtual ~name() {}
+  ~name() override {}
 
 // Convert zero_point scales to min_max scales
 // NOTE:

@@ -1,7 +1,7 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
+
+
+
+
 
 from caffe2.python import scope
 
@@ -11,7 +11,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class ParameterSharingContext(object):
+class ParameterSharingContext:
     """
     This class manages scope driven way of parameter sharing across different
     NameScopes.
@@ -57,7 +57,7 @@ class ParameterSharingContext(object):
         candidate_scope = scope.CurrentNameScope()
         best_scope = self._resolve_scope_overrides(candidate_scope)
         if best_scope != candidate_scope:
-            logger.info("Overwiting scope {0} with scope {1}".format(
+            logger.info("Overwriting scope {0} with scope {1}".format(
                 candidate_scope, best_scope))
 
         return best_scope + name

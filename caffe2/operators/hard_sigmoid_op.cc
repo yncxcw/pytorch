@@ -29,6 +29,7 @@ bool HardSigmoidGradientFunctor<CPUContext>::Forward(
     T* dX,
     CPUContext* /* context */) const {
   const int size = std::accumulate(
+      // NOLINTNEXTLINE(modernize-use-transparent-functors)
       Y_dims.cbegin(), Y_dims.cend(), 1, std::multiplies<int>());
   ConstEigenVectorArrayMap<T> Y_arr(Y, size);
   EigenVectorArrayMap<T>(dX, size) =
@@ -76,8 +77,8 @@ The HardSigmoid operation takes one input $X$, produces one output $Y$, and is d
 $$Y = max(0,min(1,x * alpha + beta))$$
 
 Github Links:
-- https://github.com/pytorch/pytorch/blob/master/caffe2/operators/hard_sigmoid_op.h
-- https://github.com/pytorch/pytorch/blob/master/caffe2/operators/hard_sigmoid_op.cc
+- https://github.com/pytorch/pytorch/blob/main/caffe2/operators/hard_sigmoid_op.h
+- https://github.com/pytorch/pytorch/blob/main/caffe2/operators/hard_sigmoid_op.cc
 
 <details>
 

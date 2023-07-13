@@ -6,11 +6,13 @@
 #endif
 
 #if AT_MKLDNN_ENABLED()
-#include <mkldnn.hpp>
+#include <dnnl.hpp>
 #include <ideep.hpp>
 #endif
 
 #include <caffe2/core/common.h>
+
+#include <ATen/native/DispatchStub.h>
 
 #include <sstream>
 
@@ -40,7 +42,7 @@ std::string get_mkldnn_version() {
     // Apparently no way to get ideep version?
     // https://github.com/intel/ideep/issues/29
     {
-      const mkldnn_version_t* ver = mkldnn_version();
+      const dnnl_version_t* ver = dnnl_version();
       ss << "Intel(R) MKL-DNN v" << ver->major << "." << ver->minor << "." << ver->patch
          << " (Git Hash " << ver->hash << ")";
     }
@@ -88,9 +90,46 @@ std::string get_openmp_version() {
   return ss.str();
 }
 
+std::string get_cpu_capability() {
+  // It is possible that we override the cpu_capability with
+  // environment variable
+  auto capability = native::get_cpu_capability();
+  switch (capability) {
+#if defined(HAVE_VSX_CPU_DEFINITION)
+    case native::CPUCapability::DEFAULT:
+      return "DEFAULT";
+    case native::CPUCapability::VSX:
+      return "VSX";
+#elif defined(HAVE_ZVECTOR_CPU_DEFINITION)
+    case native::CPUCapability::DEFAULT:
+      return "DEFAULT";
+    case native::CPUCapability::ZVECTOR:
+      return "Z VECTOR";
+#else
+    case native::CPUCapability::DEFAULT:
+      return "NO AVX";
+    case native::CPUCapability::AVX2:
+      return "AVX2";
+    case native::CPUCapability::AVX512:
+      return "AVX512";
+#endif
+    default:
+      break;
+  }
+  return "";
+}
+
+static std::string used_cpu_capability() {
+  // It is possible that we override the cpu_capability with
+  // environment variable
+  std::ostringstream ss;
+  ss << "CPU capability usage: " << get_cpu_capability();
+  return ss.str();
+}
+
 std::string show_config() {
   std::ostringstream ss;
-  ss << "PyTorch built with:\n"; // TODO add the version of PyTorch
+  ss << "PyTorch built with:\n";
 
   // Reference:
   // https://blog.kowalczyk.info/article/j/guide-to-predefined-macros-in-c-compilers-gcc-clang-msvc-etc..html
@@ -98,6 +137,12 @@ std::string show_config() {
 #if defined(__GNUC__)
   {
     ss << "  - GCC " << __GNUC__ << "." << __GNUC_MINOR__ << "\n";
+  }
+#endif
+
+#if defined(__cplusplus)
+  {
+    ss << "  - C++ Version: " << __cplusplus << "\n";
   }
 #endif
 
@@ -125,7 +170,7 @@ std::string show_config() {
   ss << "  - " << get_openmp_version() << "\n";
 #endif
 
-#ifdef USE_LAPACK
+#if AT_BUILD_WITH_LAPACK()
   // TODO: Actually record which one we actually picked
   ss << "  - LAPACK is enabled (usually provided by MKL)\n";
 #endif
@@ -135,12 +180,26 @@ std::string show_config() {
   ss << "  - NNPACK is enabled\n";
 #endif
 
+#ifdef CROSS_COMPILING_MACOSX
+  ss << "  - Cross compiling on MacOSX\n";
+#endif
+
+  ss << "  - "<< used_cpu_capability() << "\n";
+
   if (hasCUDA()) {
     ss << detail::getCUDAHooks().showConfig();
   }
 
+  if (hasORT()) {
+    ss << detail::getORTHooks().showConfig();
+  }
+
+  if (hasXPU()) {
+    ss << detail::getXPUHooks().showConfig();
+  }
+
   ss << "  - Build settings: ";
-  for (const std::pair<std::string, std::string>& pair : caffe2::GetBuildOptions()) {
+  for (const auto& pair : caffe2::GetBuildOptions()) {
     if (!pair.second.empty()) {
       ss << pair.first << "=" << pair.second << ", ";
     }
@@ -149,8 +208,20 @@ std::string show_config() {
 
   // TODO: do HIP
   // TODO: do XLA
+  // TODO: do MPS
 
   return ss.str();
+}
+
+std::string get_cxx_flags() {
+  #if defined(FBCODE_CAFFE2)
+  TORCH_CHECK(
+    false,
+    "Buck does not populate the `CXX_FLAGS` field of Caffe2 build options. "
+    "As a result, `get_cxx_flags` is OSS only."
+  );
+  #endif
+  return caffe2::GetBuildOptions().at("CXX_FLAGS");
 }
 
 }

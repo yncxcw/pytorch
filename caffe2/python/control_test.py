@@ -1,7 +1,7 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
+
+
+
+
 
 from caffe2.python import control, core, test_util, workspace
 
@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 class TestControl(test_util.TestCase):
     def setUp(self):
-        super(TestControl, self).setUp()
+        super().setUp()
         self.N_ = 10
 
         self.init_net_ = core.Net("init-net")

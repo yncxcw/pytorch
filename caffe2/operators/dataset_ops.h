@@ -92,7 +92,7 @@ class TreeCursor {
 
 /**
  * Simple wrapper class allowing an easy traversal of the tensors representing
- * the hirerarchical structure.
+ * the hierarchical structure.
  */
 class TreeWalker {
  public:
@@ -146,7 +146,7 @@ class TreeWalker {
       return size;
     }
 
-    inline const TypeMeta& meta() const {
+    inline const TypeMeta meta() const {
       return walker_.input(fieldId_).dtype();
     }
 
@@ -190,6 +190,11 @@ class TreeWalker {
 };
 
 using SharedTensorVectorPtr = std::shared_ptr<std::vector<TensorCPU>>;
+
+using Shared2DTensorVectorPtr =
+    std::shared_ptr<std::vector<std::vector<caffe2::TensorCPU>>>;
+
+using Tensor2DVector = std::vector<std::vector<caffe2::TensorCPU>>;
 
 using TensorVectorPtr = std::unique_ptr<std::vector<Tensor>>;
 

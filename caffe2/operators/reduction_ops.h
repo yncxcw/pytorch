@@ -6,6 +6,7 @@
 #include "caffe2/core/logging.h"
 #include "caffe2/core/operator.h"
 #include "caffe2/utils/math.h"
+#include "c10/util/irange.h"
 
 namespace caffe2 {
 
@@ -26,7 +27,7 @@ class SumElementsOp : public Operator<Context> {
   explicit SumElementsOp(const c10::FunctionSchema& schema, std::vector<c10::IValue> inputs, std::vector<c10::IValue*> outputs, bool average)
       : Operator<Context>(schema, std::move(inputs), std::move(outputs)), average_(average) {}
 #endif
-  ~SumElementsOp() {}
+  ~SumElementsOp() override {}
 
   bool RunOnDevice() override {
     auto& X = Input(0);
@@ -61,7 +62,7 @@ class SumElementsIntOp : public Operator<Context> {
   template <class... Args>
   explicit SumElementsIntOp(Args&&... args)
       : Operator<Context>(std::forward<Args>(args)...) {}
-  ~SumElementsIntOp() {}
+  ~SumElementsIntOp() override {}
 
   bool RunOnDevice() override {
     auto& X = Input(0);
@@ -94,7 +95,7 @@ class SumElementsGradientOp : public Operator<Context> {
   explicit SumElementsGradientOp(const c10::FunctionSchema& schema, std::vector<c10::IValue> inputs, std::vector<c10::IValue*> outputs, bool average)
       : Operator<Context>(schema, std::move(inputs), std::move(outputs)), average_(average) {}
 #endif
-  ~SumElementsGradientOp() {}
+  ~SumElementsGradientOp() override {}
 
   bool RunOnDevice() override;
 
@@ -109,7 +110,7 @@ class SumSqrElementsOp : public Operator<Context> {
   USE_OPERATOR_CONTEXT_FUNCTIONS;
 
   bool RunOnDevice() override {
-    return DispatchHelper<TensorTypes<float>>::call(this, Input(0));
+    return DispatchHelper<TensorTypes<float, double>>::call(this, Input(0));
   }
 
   template <typename T>
@@ -164,7 +165,7 @@ class MaxReductionOp : public Operator<Context> {
           &context_);
     } else {
       const int input_size = N * M;
-      for (int i = 0; i < batch_size; ++i) {
+      for (const auto i : c10::irange(batch_size)) {
         math::ColwiseMax<T, Context>(
             M,
             N,

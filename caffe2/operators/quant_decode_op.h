@@ -1,10 +1,12 @@
 #ifndef QUANT_DECODE_OP_H_
 #define QUANT_DECODE_OP_H_
 
+
+#include <c10/util/irange.h>
+#include <c10/util/typeid.h>
 #include "caffe2/core/context.h"
 #include "caffe2/core/operator.h"
 #include "caffe2/core/tensor.h"
-#include <c10/util/typeid.h>
 
 namespace caffe2 {
 
@@ -34,8 +36,8 @@ void Decode(
     }
 
     int sz = output->numel();
-    for (int i = 0; i < sz; i++) {
-      DCHECK_LE(*code_ptr, cb_size);
+    for (C10_UNUSED const auto i : c10::irange(sz)) {
+      TORCH_DCHECK_LE(*code_ptr, cb_size);
       *out_ptr++ = cb_ptr[*code_ptr++];
     }
   } else {
@@ -47,7 +49,7 @@ void Decode(
     CAFFE_ENFORCE_EQ(cb_size, output->numel());
     auto* out_ptr = output->template mutable_data<CodebookT>();
     while (gradient_ptr < gradient_end) {
-      DCHECK_LE(*code_ptr, cb_size);
+      TORCH_DCHECK_LE(*code_ptr, cb_size);
       out_ptr[*code_ptr++] += *gradient_ptr++;
     }
   }
@@ -106,7 +108,7 @@ class QuantDecodeOp final : public Operator<CPUContext> {
   explicit QuantDecodeOp(Args&&... args)
       : Operator<CPUContext>(std::forward<Args>(args)...) {}
 
-  ~QuantDecodeOp() {}
+  ~QuantDecodeOp() override {}
 
   bool RunOnDevice() override {
     CAFFE_ENFORCE_GT(InputSize(), 1);
@@ -116,7 +118,7 @@ class QuantDecodeOp final : public Operator<CPUContext> {
     const auto& codebook = Input(0);
     CAFFE_ENFORCE(codebook.template IsType<float>(), codebook.dtype().name());
 
-    for (int i = 0; i < OutputSize(); i++) {
+    for (const auto i : c10::irange(OutputSize())) {
       auto& ci = Input(i + 1);
       auto* co = Output(i);
 
@@ -142,7 +144,7 @@ class QuantDecodeGradientOp final : public Operator<CPUContext> {
   template <class... Args>
   explicit QuantDecodeGradientOp(Args&&... args)
       : Operator<CPUContext>(std::forward<Args>(args)...) {}
-  ~QuantDecodeGradientOp() {}
+  ~QuantDecodeGradientOp() override {}
 
   bool RunOnDevice() override {
     // Inputs: 1 codebook, n tensors of codes, and n corresponding gradients.
@@ -157,7 +159,7 @@ class QuantDecodeGradientOp final : public Operator<CPUContext> {
     auto* gradient_ptr = gradient->template mutable_data<float>();
     std::fill(gradient_ptr, gradient_ptr + gradient->numel(), 0);
 
-    for (int i = 0; i < num_code_tensors; i++) {
+    for (const auto i : c10::irange(num_code_tensors)) {
       auto& codes_i = Input(i + 1);
       auto& output_gradient_i = Input(i + num_code_tensors + 1);
       DecodeGeneral(codebook, codes_i, &output_gradient_i, gradient, false);

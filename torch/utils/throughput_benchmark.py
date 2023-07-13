@@ -1,6 +1,6 @@
-from __future__ import absolute_import, division, print_function, unicode_literals
 
 import torch._C
+
 
 def format_time(time_us=None, time_ms=None, time_s=None):
     '''Defines how to format time'''
@@ -24,7 +24,7 @@ def format_time(time_us=None, time_ms=None, time_s=None):
     return '{:.3f}us'.format(time_us)
 
 
-class ExecutionStats(object):
+class ExecutionStats:
     def __init__(self, c_stats, benchmark_config):
         self._c_stats = c_stats
         self.benchmark_config = benchmark_config
@@ -49,7 +49,6 @@ class ExecutionStats(object):
         return self.num_iters * (
             self.latency_avg_ms / 1000.0) / self.benchmark_config.num_calling_threads
 
-
     def __str__(self):
         return '\n'.join([
             "Average latency per example: " + format_time(time_ms=self.latency_avg_ms),
@@ -59,7 +58,7 @@ class ExecutionStats(object):
         ])
 
 
-class ThroughputBenchmark(object):
+class ThroughputBenchmark:
     '''
     This class is a wrapper around a c++ component throughput_benchmark::ThroughputBenchmark
     responsible for executing a PyTorch module (nn.Module or ScriptModule)
@@ -76,18 +75,19 @@ class ThroughputBenchmark(object):
 
     Example::
 
+        >>> # xdoctest: +SKIP("undefined vars")
         >>> from torch.utils import ThroughputBenchmark
         >>> bench = ThroughputBenchmark(my_module)
         >>> # Pre-populate benchmark's data set with the inputs
         >>> for input in inputs:
-            # Both args and kwargs work, same as any PyTorch Module / ScriptModule
-            bench.add_input(input[0], x2=input[1])
-        >>> Inputs supplied above are randomly used during the execution
+        ...     # Both args and kwargs work, same as any PyTorch Module / ScriptModule
+        ...     bench.add_input(input[0], x2=input[1])
+        >>> # Inputs supplied above are randomly used during the execution
         >>> stats = bench.benchmark(
-                num_calling_threads=4,
-                num_warmup_iters = 100,
-                num_iters = 1000,
-            )
+        ...     num_calling_threads=4,
+        ...     num_warmup_iters = 100,
+        ...     num_iters = 1000,
+        ... )
         >>> print("Avg latency (ms): {}".format(stats.latency_avg_ms))
         >>> print("Number of iterations: {}".format(stats.num_iters))
 
@@ -117,7 +117,12 @@ class ThroughputBenchmark(object):
         '''
         self._benchmark.add_input(*args, **kwargs)
 
-    def benchmark(self, num_calling_threads=1, num_warmup_iters=10, num_iters=100):
+    def benchmark(
+            self,
+            num_calling_threads=1,
+            num_warmup_iters=10,
+            num_iters=100,
+            profiler_output_path=""):
         '''
         Args:
             num_warmup_iters (int): Warmup iters are used to make sure we run a module
@@ -132,6 +137,12 @@ class ThroughputBenchmark(object):
                 iterations might be slightly larger. Which is reported as
                 stats.num_iters where stats is the result of this function
 
+            profiler_output_path (str): Location to save Autograd Profiler trace.
+                If not empty, Autograd Profiler will be enabled for the main benchmark
+                execution (but not the warmup phase). The full trace will be saved
+                into the file path provided by this argument
+
+
         This function returns BenchmarkExecutionStats object which is defined via pybind11.
         It currently has two fields:
             - num_iters - number of actual iterations the benchmark have made
@@ -141,5 +152,6 @@ class ThroughputBenchmark(object):
         config.num_calling_threads = num_calling_threads
         config.num_warmup_iters = num_warmup_iters
         config.num_iters = num_iters
+        config.profiler_output_path = profiler_output_path
         c_stats = self._benchmark.benchmark(config)
         return ExecutionStats(c_stats, config)

@@ -14,6 +14,7 @@
 #include "caffe2/core/workspace.h"
 #include "caffe2/proto/caffe2_pb.h"
 #include "caffe2/python/pybind_state_dlpack.h"
+#include "caffe2/python/pybind_workspace.h"
 
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
@@ -52,15 +53,8 @@ void addObjectMethods(pybind11::module& m);
 // Get current workspace
 Workspace* GetCurrentWorkspace();
 
-class C10_EXPORT BlobFetcherBase {
- public:
-  struct FetchedBlob {
-    pybind11::object obj;
-    bool copied;
-  };
-  virtual ~BlobFetcherBase();
-  virtual pybind11::object Fetch(const Blob& blob) = 0;
-};
+// Get workspace by name. Returns nullptr if none exists by name.
+Workspace* GetWorkspaceByName(const std::string& name);
 
 class BlobFeederBase {
  public:
@@ -71,17 +65,6 @@ class BlobFeederBase {
       Blob* blob,
       bool in_place = false) = 0;
 };
-
-C10_DECLARE_TYPED_REGISTRY(
-    BlobFetcherRegistry,
-    TypeIdentifier,
-    BlobFetcherBase,
-    std::unique_ptr);
-#define REGISTER_BLOB_FETCHER(id, ...) \
-  C10_REGISTER_TYPED_CLASS(BlobFetcherRegistry, id, __VA_ARGS__)
-inline unique_ptr<BlobFetcherBase> CreateFetcher(TypeIdentifier id) {
-  return BlobFetcherRegistry()->Create(id);
-}
 
 C10_DECLARE_TYPED_REGISTRY(
     BlobFeederRegistry,
@@ -100,8 +83,8 @@ static_assert(
     "We make an assumption that int is always int32 for numpy "
     "type mapping.");
 
-int CaffeToNumpyType(const TypeMeta& dtype);
-const TypeMeta& NumpyTypeToCaffe(int numpy_type);
+int CaffeToNumpyType(const TypeMeta dtype);
+const TypeMeta NumpyTypeToCaffe(int numpy_type);
 
 class TensorFetcher : public BlobFetcherBase {
  public:
@@ -111,7 +94,7 @@ class TensorFetcher : public BlobFetcherBase {
 
   // Checks whether the data with type `dtype` needs to be copied in the context
   // of `tensor`
-  bool NeedsCopy(const Tensor* tensor, const TypeMeta& dtype) const {
+  bool NeedsCopy(const Tensor* tensor, const TypeMeta dtype) const {
 #ifdef USE_NUMPY
     return tensor->GetDeviceType() != CPU ||
         CaffeToNumpyType(dtype) == NPY_OBJECT;
@@ -150,12 +133,12 @@ class TensorFetcher : public BlobFetcherBase {
     if (numpy_type == NPY_OBJECT) {
       PyObject** outObj = reinterpret_cast<PyObject**>(outPtr);
       auto* str = tensor.template data<std::string>();
-      for (int i = 0; i < tensor.numel(); ++i) {
+      for (const auto i : c10::irange(tensor.numel())) {
         outObj[i] = PyBytes_FromStringAndSize(str->data(), str->size());
         str++;
         // cleanup on failure
         if (outObj[i] == nullptr) {
-          for (int j = 0; j < i; ++j) {
+          for (const auto j : c10::irange(i)) {
             Py_DECREF(outObj[j]);
           }
           CAFFE_THROW("Failed to allocate string for ndarray of strings.");
@@ -197,9 +180,9 @@ class TensorFeeder : public BlobFeederBase {
     auto g = MakeGuard([&]() { Py_XDECREF(array); });
 
     const auto npy_type = PyArray_TYPE(array);
-    const TypeMeta& dtype = NumpyTypeToCaffe(npy_type);
+    const TypeMeta dtype = NumpyTypeToCaffe(npy_type);
     CAFFE_ENFORCE(
-        dtype.id() != TypeIdentifier::uninitialized(),
+        dtype != ScalarType::Undefined,
         "This numpy data type is not supported: ",
         PyArray_TYPE(array),
         ".");
@@ -209,7 +192,7 @@ class TensorFeeder : public BlobFeederBase {
     int ndim = PyArray_NDIM(array);
     npy_intp* npy_dims = PyArray_DIMS(array);
     std::vector<int64_t> dims;
-    for (int i = 0; i < ndim; ++i) {
+    for (const auto i : c10::irange(ndim)) {
       dims.push_back(npy_dims[i]);
     }
 
@@ -226,10 +209,9 @@ class TensorFeeder : public BlobFeederBase {
               dims, at::dtype<std::string>().device(Context::GetDeviceType()));
         }
         auto* outPtr = tensor.template mutable_data<std::string>();
-        for (int i = 0; i < tensor.numel(); ++i) {
+        for (const auto i : c10::irange(tensor.numel())) {
           char* str;
           Py_ssize_t strSize;
-#if PY_MAJOR_VERSION > 2
           if (PyBytes_Check(input[i])) {
             CAFFE_ENFORCE(
                 PyBytes_AsStringAndSize(input[i], &str, &strSize) != -1,
@@ -243,11 +225,6 @@ class TensorFeeder : public BlobFeederBase {
           } else {
             CAFFE_THROW("Unsupported python object type passed into ndarray.");
           }
-#else
-          CAFFE_ENFORCE(
-              PyBytes_AsStringAndSize(input[i], &str, &strSize) != -1,
-              "Unsupported python object type passed into ndarray.");
-#endif // PY_MAJOR_VERSION > 2
           outPtr[i] = std::string(str, strSize);
         }
         break;
@@ -339,18 +316,12 @@ class PythonOpBase : public Operator<Context> {
         try {
           builder_call = loads(py::bytes(pickled)).cast<py::tuple>();
         } catch (const py::error_already_set& e) {
-#if PY_MAJOR_VERSION >= 3
           LOG(INFO) << "Cannot unpickle python operator: " << e.what();
           LOG(INFO) << "Try latin1 encoding for python3 run";
           // to use the `_a` literal for arguments
           using namespace pybind11::literals;
           builder_call = loads(py::bytes(pickled), "encoding"_a = "latin1")
                              .template cast<py::tuple>();
-#else
-          // for py2, simply re-throw the exception, as there is no encoding
-          // argument for pickle.loads
-          throw;
-#endif
         }
         CAFFE_ENFORCE(builder_call);
         CAFFE_ENFORCE_EQ(py::len(builder_call), 3);
@@ -359,16 +330,15 @@ class PythonOpBase : public Operator<Context> {
         auto kwargs = builder_call[2].cast<py::dict>();
         auto built_func = func(*args, **kwargs);
         CAFFE_ENFORCE(built_func);
-        built_func_.reset(
-            new Func{built_func,
-                     OperatorBase::template GetSingleArgument<bool>(
-                         "pass_workspace", false)});
+        built_func_.reset(new Func{
+            built_func,
+            OperatorBase::template GetSingleArgument<bool>(
+                "pass_workspace", false)});
       } catch (const py::error_already_set& e) {
-        std::stringstream error;
-        error << "Python exception encountered while creating PythonOp: "
-              << e.what();
-        LOG(ERROR) << error.str();
-        CAFFE_THROW(error.str());
+        LOG(ERROR) << "Python exception encountered while creating PythonOp: "
+                   << e.what();
+        // Rethrow exception to preserve python exception type.
+        throw;
       }
     }
   }
@@ -385,7 +355,7 @@ class PythonOpBase : public Operator<Context> {
 
       std::vector<py::object> inputs;
       inputs.reserve(InputSize());
-      for (auto i = 0; i < InputSize(); ++i) {
+      for (const auto i : c10::irange(InputSize())) {
         const auto* blob = &InputBlob(i);
         // Allow CPU tensors in addition to operator context's tensors
         py::object py_obj;
@@ -405,7 +375,7 @@ class PythonOpBase : public Operator<Context> {
       }
       std::vector<py::object> outputs;
       outputs.reserve(OutputSize());
-      for (auto i = 0; i < OutputSize(); ++i) {
+      for (const auto i : c10::irange(OutputSize())) {
         auto* blob = OutputBlob(i);
 
         // Python op is always used with CPUContext only and treats inputs and
@@ -439,11 +409,10 @@ class PythonOpBase : public Operator<Context> {
           pyFunc->py_func(inputs, outputs);
         }
       } catch (const py::error_already_set& e) {
-        std::stringstream error;
-        error << "Exception encountered running PythonOp function: "
-              << e.what();
-        LOG(ERROR) << error.str();
-        CAFFE_THROW(error.str());
+        LOG(ERROR) << "Exception encountered running PythonOp function: "
+                   << e.what();
+        // Rethrow exception to preserve python exception type.
+        throw;
       }
     }
     return true;

@@ -14,6 +14,7 @@ class StatRegistryCreateOp : public Operator<CPUContext> {
 
   bool RunOnDevice() override {
     *OperatorBase::Output<std::unique_ptr<StatRegistry>>(0) =
+        // NOLINTNEXTLINE(modernize-make-unique)
         std::unique_ptr<StatRegistry>(new StatRegistry);
     return true;
   }
@@ -42,6 +43,7 @@ class StatRegistryExportOp : public Operator<CPUContext> {
     auto* ptimestamps = timestamps->template mutable_data<int64_t>();
     int i = 0;
     for (const auto& stat : data) {
+      // NOLINTNEXTLINE(performance-move-const-arg)
       pkeys[i] = std::move(stat.key);
       pvals[i] = stat.value;
       ptimestamps[i] =
@@ -98,6 +100,7 @@ class TimerInstance {
     using namespace std::chrono;
     auto duration = high_resolution_clock::now() - start_;
     auto nanos = duration_cast<nanoseconds>(duration).count();
+    // NOLINTNEXTLINE(clang-diagnostic-unused-variable)
     CAFFE_EVENT(stat_, time_ns, nanos);
     running_ = false;
   }
@@ -115,6 +118,7 @@ class TimerInstance {
   std::chrono::high_resolution_clock::time_point start_;
 
   struct TimerStat {
+    // NOLINTNEXTLINE(modernize-pass-by-value)
     CAFFE_STAT_CTOR(TimerStat);
     CAFFE_AVG_EXPORTED_STAT(time_ns);
   } stat_;
@@ -233,7 +237,7 @@ OPERATOR_SCHEMA(TimerBegin)
 Start a wallclock timer, returning a scalar tensor containing a pointer to it. The timer is stopped by calling **TimerEnd**.
 
 Github Links:
-- https://github.com/pytorch/pytorch/blob/master/caffe2/operators/stats_ops.cc
+- https://github.com/pytorch/pytorch/blob/main/caffe2/operators/stats_ops.cc
 
     )DOC")
     .Arg("counter_name", "(*str*): name of the timer object; if not set use output name")
@@ -246,7 +250,7 @@ OPERATOR_SCHEMA(TimerEnd)
 Stop a timer started with **TimerBegin**. Publishes a CAFFE_EVENT.
 
 Github Links:
-- https://github.com/pytorch/pytorch/blob/master/caffe2/operators/stats_ops.cc
+- https://github.com/pytorch/pytorch/blob/main/caffe2/operators/stats_ops.cc
 
     )DOC")
     .Input(0, "timer", "(*Tensor`<ptr>`*): pointer to a timer object; obtained from **TimerBegin** op");
@@ -258,7 +262,7 @@ OPERATOR_SCHEMA(TimerGetAndEnd)
 Queries the current time of a timer in nanos, stops the timer publishing a CAFFE_EVENT.
 
 Github Links:
-- https://github.com/pytorch/pytorch/blob/master/caffe2/operators/stats_ops.cc
+- https://github.com/pytorch/pytorch/blob/main/caffe2/operators/stats_ops.cc
 
 <details>
 
@@ -334,7 +338,7 @@ OPERATOR_SCHEMA(TimerGet)
 Queries the current time of a timer object in nanoseconds.
 
 Github Links:
-- https://github.com/pytorch/pytorch/blob/master/caffe2/operators/stats_ops.cc
+- https://github.com/pytorch/pytorch/blob/main/caffe2/operators/stats_ops.cc
 
     )DOC")
     .Input(0, "timer", "(*Tensor`<ptr>`*): pointer to a timer object; obtained from **TimerBegin** op")

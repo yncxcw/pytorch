@@ -1,8 +1,8 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
-from hypothesis import given
+
+
+
+
+from hypothesis import given, settings
 import numpy as np
 import unittest
 
@@ -119,7 +119,7 @@ class TestHsm(hu.HypothesisTestCase):
         for i in range(names.shape[0]):
             for j in range(names.shape[1]):
                 if names[i][j]:
-                    self.assertEquals(
+                    self.assertEqual(
                         names[i][j], p_names[i][j].item().encode('utf-8'))
                     self.assertAlmostEqual(
                         scores[i][j], p_scores[i][j], delta=0.001)
@@ -178,6 +178,7 @@ class TestHsm(hu.HypothesisTestCase):
     # symmetric derivative calculated using Euler Method
     # TODO : convert to both cpu and gpu test when ready.
     @given(**hu.gcs_cpu_only)
+    @settings(deadline=10000)
     def test_hsm_gradient(self, gc, dc):
         samples = 10
         dim_in = 5

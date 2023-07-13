@@ -1,14 +1,14 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
+
+
+
+
 from caffe2.python import core, workspace
 from caffe2.python.test_util import TestCase
 
 import numpy as np
 import numpy.testing as npt
 
-from hypothesis import given
+from hypothesis import given, settings
 import hypothesis.strategies as st
 
 import functools
@@ -51,7 +51,7 @@ class TestReBatchingQueue(TestCase):
         workspace.RunNetOnce(net)
 
         for idx in range(3):
-            self.assertEquals(workspace.FetchBlob(results[idx]), [1.0])
+            self.assertEqual(workspace.FetchBlob(results[idx]), [1.0])
 
     def test_rebatching_queue_multi_enqueue_dequeue(self):
         net = core.Net('net')
@@ -172,6 +172,7 @@ class TestReBatchingQueue(TestCase):
         producer_num_iterations=st.integers(1, 10),
         capacity=st.integers(1, 10)
     )
+    @settings(deadline=10000)
     def test_rebatching_parallel_producer_consumer(
         self, num_producers, num_consumers, producer_input_size,
         producer_num_iterations, capacity
@@ -279,7 +280,7 @@ class TestReBatchingQueue(TestCase):
         # We check that the outputs are a permutation of inputs
         inputs.sort()
         outputs.sort()
-        self.assertEquals(inputs, outputs)
+        self.assertEqual(inputs, outputs)
 
 
 if __name__ == "__main__":

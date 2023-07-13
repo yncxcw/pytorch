@@ -62,7 +62,7 @@ C10_DEFINE_string(
     "Report the conversion stage time to screen. "
     "The format of the string is <type>|<identifier>. "
     "The valid type is 'json'. "
-    "The valid identifier is nothing or an identifer that prefix every line");
+    "The valid identifier is nothing or an identifier that prefix every line");
 C10_DEFINE_string(
     scale,
     "-1,-1",
@@ -591,7 +591,7 @@ void runNetwork(
   }
 
   caffe2::NetBase* net = workspace->CreateNet(net_def);
-  CHECK_NOTNULL(net);
+  TORCH_CHECK_NOTNULL(net);
 
   LOG(INFO) << "Starting benchmark.";
   caffe2::ObserverConfig::initSampleRate(1, 1, 1, run_individual, warmup);

@@ -35,11 +35,11 @@ class PrefetchOperator : public OperatorBase {
     context_.SwitchToDevice();
   }
 
-  virtual ~PrefetchOperator() noexcept {
-    CHECK(finalize_ || !prefetch_thread_.get()) <<
-        "YOU MADE A PROGRAMING ERROR: derived class of PrefetchOperator "
-        "should call Finalize() in its destructor so the prefetching "
-        "thread is joined. ";
+  ~PrefetchOperator() noexcept override {
+    CHECK(finalize_ || !prefetch_thread_.get())
+        << "YOU MADE A PROGRAMMING ERROR: derived class of PrefetchOperator "
+           "should call Finalize() in its destructor so the prefetching "
+           "thread is joined. ";
   }
 
   void Finalize() {

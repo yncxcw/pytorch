@@ -74,8 +74,8 @@ Output when is_test = 0 (train mode): *Y, mean, var, saved_mean, saved_var*
 Output when is_test = 1 (test mode): *Y*
 
 Github Links:
-- https://github.com/pytorch/pytorch/blob/master/caffe2/operators/spatial_batch_norm_op.cc
-- https://github.com/pytorch/pytorch/blob/master/caffe2/operators/spatial_batch_norm_op.h
+- https://github.com/pytorch/pytorch/blob/main/caffe2/operators/spatial_batch_norm_op.cc
+- https://github.com/pytorch/pytorch/blob/main/caffe2/operators/spatial_batch_norm_op.h
 
 )DOC")
     .ArgIsTest(
@@ -85,6 +85,7 @@ Github Links:
         "*(type: float; default: 1e-5)* The epsilon value to use to avoid division by zero.")
     .Arg(
         "order",
+        // NOLINTNEXTLINE(modernize-raw-string-literal)
         "*(type: string; default: \"NCHW\")* Specifies the order of the input data blob, where $N$ is batch size, $C$ is number of channels, $H$ is spatial height, and $W$ is spatial width. The only other valid option is \"NHWC\".")
     .Arg(
         "momentum",

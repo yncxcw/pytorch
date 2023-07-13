@@ -1,11 +1,21 @@
-if (INTERN_BUILD_MOBILE AND NOT BUILD_CAFFE2_MOBILE)
+if(NOT BUILD_CAFFE2 OR INTERN_BUILD_MOBILE)
   list(APPEND Caffe2_CPU_SRCS
     utils/string_utils.cc
-    utils/threadpool/pthreadpool.cc
-    utils/threadpool/pthreadpool_impl.cc
     utils/threadpool/ThreadPool.cc
-    utils/threadpool/ThreadPoolMobile.cc
   )
+
+  if(USE_PTHREADPOOL AND NOT USE_INTERNAL_PTHREADPOOL_IMPL)
+    list(APPEND Caffe2_CPU_SRCS
+      utils/threadpool/pthreadpool-cpp.cc
+      utils/threadpool/thread_pool_guard.cpp
+    )
+  endif()
+
+  if(NOT BUILD_CAFFE2 AND NOT INTERN_BUILD_MOBILE)
+    list(APPEND Caffe2_CPU_SRCS
+      utils/proto_wrap.cc
+    )
+  endif()
   set(Caffe2_CPU_SRCS ${Caffe2_CPU_SRCS} PARENT_SCOPE)
   return()
 endif()
@@ -20,23 +30,22 @@ list(APPEND Caffe2_CPU_SRCS
   utils/math/utils.cc
   utils/math_cpu.cc
   utils/murmur_hash3.cc
-  utils/proto_convert.cc
   utils/proto_utils.cc
   utils/proto_wrap.cc
+  utils/threadpool/ThreadPool.cc
   utils/signal_handler.cc
   utils/smart_tensor_printer.cc
-  utils/string_utils.cc
-  utils/threadpool/ThreadPool.cc)
+  utils/string_utils.cc)
 
-# ---[ threadpool/pthreadpool* is a local modification of the NNPACK
-# pthreadpool with a very similar interface. Neither NNPACK, nor this
-# thread pool supports Windows.
-if (NOT MSVC)
-  set(Caffe2_CPU_SRCS ${Caffe2_CPU_SRCS}
-          utils/threadpool/pthreadpool.cc
-          utils/threadpool/pthreadpool_impl.cc
-          utils/threadpool/ThreadPoolMobile.cc
-          )
+if(USE_PTHREADPOOL)
+  list(APPEND Caffe2_CPU_SRCS
+    utils/threadpool/pthreadpool-cpp.cc
+    utils/threadpool/thread_pool_guard.cpp)
+  if(USE_INTERNAL_PTHREADPOOL_IMPL)
+    list(APPEND Caffe2_CPU_SRCS
+      utils/threadpool/pthreadpool.cc
+      utils/threadpool/pthreadpool_impl.cc)
+  endif()
 endif()
 
 set(Caffe2_GPU_SRCS ${Caffe2_GPU_SRCS}
@@ -61,10 +70,15 @@ set(Caffe2_CPU_TEST_SRCS ${Caffe2_CPU_TEST_SRCS}
         utils/fatal_signal_asan_no_sig_test.cc
         utils/simple_queue_test.cc
         utils/proto_utils_test.cc
-        utils/cpuid_test.cc
         utils/smart_tensor_printer_test.cc
         utils/cast_test.cc
         )
+
+if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "s390x")
+  set(Caffe2_CPU_TEST_SRCS ${Caffe2_CPU_TEST_SRCS}
+          utils/cpuid_test.cc
+          )
+endif()
 
 set(Caffe2_GPU_TEST_SRCS ${Caffe2_GPU_TEST_SRCS}
         utils/math_gpu_test.cc

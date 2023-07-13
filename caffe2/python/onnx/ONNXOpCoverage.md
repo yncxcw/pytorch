@@ -19,7 +19,7 @@ This doc keeps tracking why operators are not covered by the testcases.
 |Atan|||&#x1F49A;OK|
 |AveragePool||OK|&#x1F49A;OK|
 |BatchNormalization||OK|&#x1F49A;OK|
-|Cast|Yes||&#x1F494;Need extendtion|
+|Cast|Yes||&#x1F494;Need extension|
 |Ceil|Yes||&#x1F49A;OK|
 |Clip|Yes|OK|&#x1F49A;OK|
 |Concat|Yes|OK|&#x1F49A;OK|
@@ -89,7 +89,7 @@ This doc keeps tracking why operators are not covered by the testcases.
 |Sigmoid|Yes|OK|&#x1F49A;OK|
 |Sin|Yes|OK|&#x1F49A;OK|
 |Size|Yes|OK|&#x1F49A;OK|
-|Slice|Yes|OK|&#x1F494;ScatterAssign + Cast, very hacky implementaion, Slice in C2 only supports one dimension|
+|Slice|Yes|OK|&#x1F494;ScatterAssign + Cast, very hacky implementation, Slice in C2 only supports one dimension|
 |Softmax|Yes|OK|&#x1F494;Axis and dim has different semantics|
 |Softplus|Yes|OK|&#x1F49A;OK|
 |Softsign|Yes||&#x1F49A;OK|

@@ -22,7 +22,7 @@ const std::string& GetStringFromBlob(Blob* blob) {
     CAFFE_THROW("Unsupported Blob type");
   }
 }
-}
+} // namespace
 
 class BlobsQueueDBCursor : public Cursor {
  public:
@@ -42,7 +42,7 @@ class BlobsQueueDBCursor : public Cursor {
     CAFFE_ENFORCE(value_blob_index_ >= 0, "value_blob_index < 0");
   }
 
-  virtual ~BlobsQueueDBCursor() {}
+  ~BlobsQueueDBCursor() override {}
 
   void Seek(const string& /* unused */) override {
     CAFFE_THROW("Seek is not supported.");
@@ -121,7 +121,7 @@ class BlobsQueueDB : public DB {
     LOG(INFO) << "BlobsQueueDB constructed";
   }
 
-  virtual ~BlobsQueueDB() {
+  ~BlobsQueueDB() override {
     Close();
   }
 

@@ -21,13 +21,13 @@ class Tensor;
  * properly when the blob is deallocated or re-allocated with a new type. A blob
  * could contain anything, although the most common case is to contain a Tensor.
  */
-class CAFFE2_API Blob final : public c10::intrusive_ptr_target {
+class TORCH_API Blob final : public c10::intrusive_ptr_target {
  public:
   /**
    * Initializes an empty Blob.
    */
   Blob() noexcept : meta_(), pointer_(nullptr), has_ownership_(false) {}
-  ~Blob() {
+  ~Blob() override {
     Reset();
   }
 
@@ -51,7 +51,7 @@ class CAFFE2_API Blob final : public c10::intrusive_ptr_target {
   /**
    * Returns the meta info of the blob.
    */
-  const TypeMeta& meta() const noexcept {
+  const TypeMeta meta() const noexcept {
     return meta_;
   }
 
@@ -66,18 +66,19 @@ class CAFFE2_API Blob final : public c10::intrusive_ptr_target {
    * @brief Gets the const reference of the stored object. The code checks if
    * the stored object is of the desired type.
    */
-  // TODO(jerryzh): add a Get(DeviceType) function?
+  // TODO(jerryzh): add a Get(c10::DeviceType) function?
   template <class T>
   const T& Get() const {
-    AT_ASSERTM(
+    TORCH_INTERNAL_ASSERT(
         IsType<T>(),
         "wrong type for the Blob instance. Blob contains ",
         meta_.name(),
         " while caller expects ",
         TypeMeta::TypeName<T>());
-    // TODO: after we add Get<Tensor>(DeviceType)
+    // TODO: after we add Get<Tensor>(c10::DeviceType)
     // and changed all the callsites, we can add
     // a static assert here to enforce T != Tensor
+    // NOLINTNEXTLINE(clang-analyzer-core.uninitialized.UndefReturn)
     return *static_cast<const T*>(pointer_);
   }
 
@@ -155,11 +156,10 @@ class CAFFE2_API Blob final : public c10::intrusive_ptr_target {
         TypeMeta::Make<typename std::remove_const<T>::type>()));
   }
 
-  // TODO Remove ShareExternal() and have Blob always own its content
-  void* ShareExternal(void* allocated, const TypeMeta& meta) {
+  void* ShareExternal(void* allocated, const TypeMeta meta) {
     free_();
     meta_ = meta;
-    pointer_ = static_cast<void*>(allocated);
+    pointer_ = allocated;
     has_ownership_ = false;
     return allocated;
   }
@@ -186,15 +186,14 @@ class CAFFE2_API Blob final : public c10::intrusive_ptr_target {
 
  private:
   void free_() {
-    if (has_ownership_) {
-      AT_ASSERTM(pointer_ != nullptr, "Can't have ownership of nullptr");
+    if (has_ownership_ && pointer_ != nullptr) {
       (*meta_.deleteFn())(pointer_);
     }
   }
 
   TypeMeta meta_;
-  void* pointer_ = nullptr;
-  bool has_ownership_ = false;
+  void* pointer_;
+  bool has_ownership_;
 
   C10_DISABLE_COPY_AND_ASSIGN(Blob);
 };

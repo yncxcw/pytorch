@@ -1,8 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
-
 import functools
 import numpy as np
 import timeit
@@ -12,9 +7,8 @@ import copy
 import ast
 
 # needs to be imported after torch
-import cpp_extension # noqa
+import torch.utils.cpp_extension as cpp_extension  # noqa: F401
 
-import cpp_extension # noqa
 import benchmark_utils
 from collections import namedtuple
 
@@ -53,7 +47,7 @@ def _create_test(bench_op_obj, orig_test_attrs, tags, OperatorTestCase, run_back
             bench_op_obj: an object which instantiated from a subclass of
                 Caffe2BenchmarkBase/TorchBenchmarkBase which includes tensor
                 creation and operator execution.
-            test_attrs: a dictionary includes test configs.
+            orig_test_attrs: a dictionary includes test configs.
             tags: a attribute in test config to filter inputs
             OperatorTestCase: a named tuple to save the metadata of an test
             run_backward: a bool parameter indicating backward path
@@ -93,7 +87,7 @@ def _build_test(configs, bench_op, OperatorTestCase, run_backward, op_name_funct
                 tags = attr["tags"]
                 continue
 
-            # if 'cuda' is sepcified in input shape but the testing machines doesn't
+            # if 'cuda' is specified in input shape but the testing machines doesn't
             # support, we will skip this input
             if 'cuda' in attr.values():
                 if not torch.cuda.is_available():
@@ -124,6 +118,13 @@ def _build_test(configs, bench_op, OperatorTestCase, run_backward, op_name_funct
 
         op._set_backward_test(run_backward)
         op.init(**init_dict)
+        op.extract_inputs_tuple()
+
+        if not run_backward:
+            for attr in vars(op).values():
+                if isinstance(attr, torch.nn.Module):
+                    for param in attr.parameters():
+                        param.requires_grad = False
 
         input_name = None
 
@@ -149,7 +150,7 @@ def _build_test(configs, bench_op, OperatorTestCase, run_backward, op_name_funct
             yield _create_test(new_op, test_attrs, tags, OperatorTestCase, run_backward, input_name)
 
 
-class BenchmarkRunner(object):
+class BenchmarkRunner:
     """BenchmarkRunner is responsible for benchmarking all the registered
     benchmark test groups.
 
@@ -199,8 +200,8 @@ class BenchmarkRunner(object):
                 print("# {}".format(self.args.operators))
 
     def _print_perf_result(self, reported_run_time_us, test_case):
-        if self.args.ai_pep_format:
-            # Output for AI-PEP
+        if self.args.report_aibench:
+            # Output for AIBench
             # Print out per iteration execution time instead of avg time
             return
             test_name = '_'.join([test_case.framework, test_case.test_config.test_name])
@@ -250,7 +251,7 @@ class BenchmarkRunner(object):
     def _launch_forward(self, test_case, iters, print_per_iter):
         """ Use Python's timeit module to measure execution time (unit: second).
         """
-        cuda_sync = True if 'cuda' in test_case.test_config.test_name else False
+        cuda_sync = 'cuda' in test_case.test_config.test_name
         func = test_case.run_forward
         if self.use_jit:
             func = test_case.run_jit_forward
@@ -287,7 +288,7 @@ class BenchmarkRunner(object):
             report_run_time = 1e6 * run_time_sec / iters
             time_trace.append(report_run_time)
             # Print out the time spent in each epoch in ms
-            if self.args.ai_pep_format:
+            if self.args.report_aibench:
                 mode = "JIT" if self.use_jit else "Eager"
                 test_name = '_'.join([test_case.framework, test_case.test_config.test_name, mode])
                 print("PyTorchObserver " + json.dumps(

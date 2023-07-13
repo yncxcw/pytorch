@@ -27,7 +27,7 @@ class Int8ConvOp final : public ConvPoolOpBase<CPUContext> {
     createSharedBuffer<CPUContext>(ws_);
   }
 
-  ~Int8ConvOp() {
+  ~Int8ConvOp() override {
     if (this->qnnpackObject_ != nullptr) {
       qnnp_delete_operator(this->qnnpackObject_);
       this->qnnpackObject_ = nullptr;
@@ -56,12 +56,14 @@ class Int8ConvOp final : public ConvPoolOpBase<CPUContext> {
     const bool isDepthwise = this->group_ > 1 && this->group_ == M &&
         this->group_ == C && KC == 1 && KH * KW == 9 && dilation_w() == 1;
 
-    CHECK_EQ(Y->t.dim32(3), M);
+    TORCH_CHECK_EQ(Y->t.dim32(3), M);
     runWithSharedBuffer<CPUContext>(ws_, [&](Tensor* buffer) {
       initQNNPACK();
 
+#if !defined(FBCODE_CAFFE2) && defined(USE_INTERNAL_PTHREADPOOL_IMPL)
       pthreadpool_t threadpool =
           reinterpret_cast<pthreadpool_t>(ws_->GetThreadPool());
+#endif
 
       if (this->qnnpackObject_ == nullptr) {
         CAFFE_ENFORCE(
@@ -141,7 +143,7 @@ class Int8ConvOp final : public ConvPoolOpBase<CPUContext> {
         lastOutputPointer_ = Y->t.template mutable_data<uint8_t>();
       }
 
-#ifdef FBCODE_CAFFE2
+#if defined(FBCODE_CAFFE2) || !defined(USE_INTERNAL_PTHREADPOOL_IMPL)
       const qnnp_status runStatus =
           qnnp_run_operator(this->qnnpackObject_, nullptr /* thread pool */);
 #else

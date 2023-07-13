@@ -7,10 +7,6 @@
 #include "caffe2/utils/conversions.h"
 #include "caffe2/utils/math.h"
 
-#ifdef DNNLOWP_MEASURE_TIME_BREAKDOWN
-#include <chrono>
-#endif
-
 namespace caffe2 {
 
 // This is Caffe's InnerProductOp, with a name that fits its purpose better.
@@ -28,7 +24,7 @@ class FullyConnectedOp final : public Operator<Context> {
         axis_w_(this->template GetSingleArgument<int32_t>("axis_w", 1)),
         float16_compute_(
             this->template GetSingleArgument<bool>("float16_compute", false)) {}
-  ~FullyConnectedOp() {}
+  ~FullyConnectedOp() override {}
 
   template <
       typename T_X,
@@ -37,16 +33,6 @@ class FullyConnectedOp final : public Operator<Context> {
       typename T_Y,
       typename MATH>
   bool DoRunWithType() {
-#ifdef DNNLOWP_MEASURE_TIME_BREAKDOWN
-    std::chrono::time_point<std::chrono::system_clock> t_very_begin, t_begin,
-        t_end;
-    /* if (VLOG_IS_ON(3)) */
-    {
-      t_begin = std::chrono::system_clock::now();
-      t_very_begin = t_begin;
-    }
-#endif
-
     const auto& X = Input(0);
     const auto& W = Input(1);
     const auto& b = Input(2);
@@ -87,7 +73,7 @@ class FullyConnectedOp final : public Operator<Context> {
 
     Y_shape_cache_ = X.sizes().vec();
     // This is an invariant of canonical_axis, so we can DCHECK.
-    DCHECK_LE(canonical_axis + 1, Y_shape_cache_.size());
+    TORCH_DCHECK_LE(canonical_axis + 1, Y_shape_cache_.size());
     Y_shape_cache_.resize(canonical_axis + 1);
     Y_shape_cache_[canonical_axis] = N;
     auto* Y = Output(0, Y_shape_cache_, at::dtype<T_Y>());
@@ -105,16 +91,6 @@ class FullyConnectedOp final : public Operator<Context> {
       math_type = TensorProto_DataType_FLOAT16;
     }
 
-#ifdef DNNLOWP_MEASURE_TIME_BREAKDOWN
-    /* if (VLOG_IS_ON(3)) */
-    {
-      t_end = std::chrono::system_clock::now();
-      double dt = std::chrono::duration<double>(t_end - t_begin).count();
-      LOG(INFO) << "@PERF this=" << this << " before_gemm: " << dt * 1e3
-                << " ms";
-      t_begin = std::chrono::system_clock::now();
-    }
-#endif
     // W * x
     math::Gemm<T_X, Context, Engine>(
         CblasNoTrans,
@@ -130,15 +106,6 @@ class FullyConnectedOp final : public Operator<Context> {
         &context_,
         math_type);
 
-#ifdef DNNLOWP_MEASURE_TIME_BREAKDOWN
-    /* if (VLOG_IS_ON(3)) */
-    {
-      t_end = std::chrono::system_clock::now();
-      double dt = std::chrono::duration<double>(t_end - t_begin).count();
-      LOG(INFO) << "@PERF this=" << this << " gemm: " << dt * 1e3 << " ms";
-      t_begin = std::chrono::system_clock::now();
-    }
-#endif
     // Add bias term
     if (!bias_multiplier_.has_value()) {
       bias_multiplier_ =
@@ -171,15 +138,6 @@ class FullyConnectedOp final : public Operator<Context> {
         &context_,
         math_type);
 
-#ifdef DNNLOWP_MEASURE_TIME_BREAKDOWN
-    /* if (VLOG_IS_ON(3)) */
-    {
-      t_end = std::chrono::system_clock::now();
-      double dt = std::chrono::duration<double>(t_end - t_begin).count();
-      LOG(INFO) << "@PERF this=" << this << " add_bias : " << dt * 1e3 << " ms";
-      t_begin = std::chrono::system_clock::now();
-    }
-#endif
     return true;
   }
 
@@ -217,7 +175,7 @@ class FullyConnectedGradientOp : public Operator<Context> {
         axis_w_(this->template GetSingleArgument<int32_t>("axis_w", 1)),
         float16_compute_(
             this->template GetSingleArgument<bool>("float16_compute", false)) {}
-  ~FullyConnectedGradientOp() {}
+  ~FullyConnectedGradientOp() override {}
 
   template <
       typename T_X,
@@ -306,7 +264,8 @@ class FullyConnectedGradientOp : public Operator<Context> {
         &context_,
         math_type);
     if (!bias_multiplier_.has_value()) {
-      bias_multiplier_ = caffe2::empty({M}, at::dtype<T_B>().device(Context::GetDeviceType()));
+      bias_multiplier_ =
+          caffe2::empty({M}, at::dtype<T_B>().device(Context::GetDeviceType()));
       math::Set<T_B, Context>(
           M,
           convert::To<float, T_B>(1),

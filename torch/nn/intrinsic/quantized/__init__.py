@@ -1,9 +1,13 @@
-from __future__ import absolute_import, division, print_function, unicode_literals
-from .modules import LinearReLU
-from .modules import ConvReLU2d, ConvReLU3d
+from .modules import *  # noqa: F403
+# to ensure customers can use the module below
+# without importing it directly
+import torch.nn.intrinsic.quantized.dynamic
 
 __all__ = [
-    'LinearReLU',
+    'BNReLU2d',
+    'BNReLU3d',
+    'ConvReLU1d',
     'ConvReLU2d',
     'ConvReLU3d',
+    'LinearReLU',
 ]

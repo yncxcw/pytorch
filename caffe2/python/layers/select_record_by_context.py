@@ -1,7 +1,7 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
+
+
+
+
 
 import logging
 
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 class SelectRecordByContext(ModelLayer):
     """
-    Allowing model to follow different paths for each instatiation context and
+    Allowing model to follow different paths for each instantiation context and
     join later at some point. The implementation use `Alias` because schema
     sometimes clone fields internally so we need static blob name for output
     """
@@ -32,8 +32,7 @@ class SelectRecordByContext(ModelLayer):
         default_output_record_field=None,
         **kwargs
     ):
-        super(SelectRecordByContext, self).__init__(model, name, input_record,
-                                                    **kwargs)
+        super().__init__(model, name, input_record, **kwargs)
 
         assert isinstance(input_record, schema.Struct)
         assert len(input_record) > 1

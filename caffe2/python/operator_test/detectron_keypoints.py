@@ -1,7 +1,7 @@
-from __future__ import division
-from __future__ import absolute_import
-from __future__ import print_function
-from __future__ import unicode_literals
+
+
+
+
 
 try:
     import cv2
@@ -32,8 +32,8 @@ def heatmaps_to_keypoints(maps, rois):
     heights = rois[:, 3] - rois[:, 1]
     widths = np.maximum(widths, 1)
     heights = np.maximum(heights, 1)
-    widths_ceil = np.ceil(widths).astype(np.int)
-    heights_ceil = np.ceil(heights).astype(np.int)
+    widths_ceil = np.ceil(widths).astype(int)
+    heights_ceil = np.ceil(heights).astype(int)
 
     num_keypoints = np.maximum(maps.shape[1], _NUM_KEYPOINTS)
 

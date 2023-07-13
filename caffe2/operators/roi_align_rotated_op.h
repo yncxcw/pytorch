@@ -4,8 +4,11 @@
 #define ROTATED_ROI_ALIGN_OP_H_
 
 #include "caffe2/core/context.h"
+#include "caffe2/core/export_caffe2_op_to_c10.h"
 #include "caffe2/core/logging.h"
 #include "caffe2/core/operator.h"
+
+C10_DECLARE_EXPORT_CAFFE2_OP_TO_C10(RoIAlignRotated)
 
 namespace caffe2 {
 
@@ -24,17 +27,15 @@ class RoIAlignRotatedOp final : public Operator<Context> {
         sampling_ratio_(
             this->template GetSingleArgument<int>("sampling_ratio", -1)),
         aligned_(this->template GetSingleArgument<bool>("aligned", false)) {
-    DCHECK_GT(spatial_scale_, 0);
-    DCHECK_GT(pooled_height_, 0);
-    DCHECK_GT(pooled_width_, 0);
-    DCHECK_GE(sampling_ratio_, 0);
+    TORCH_DCHECK_GT(spatial_scale_, 0);
+    TORCH_DCHECK_GT(pooled_height_, 0);
+    TORCH_DCHECK_GT(pooled_width_, 0);
+    TORCH_DCHECK_GE(sampling_ratio_, 0);
     DCHECK(order_ == StorageOrder::NCHW || order_ == StorageOrder::NHWC);
   }
   USE_OPERATOR_CONTEXT_FUNCTIONS;
 
-  bool RunOnDevice() override {
-    CAFFE_NOT_IMPLEMENTED;
-  }
+  bool RunOnDevice() override;
 
  protected:
   StorageOrder order_;

@@ -5,7 +5,7 @@ namespace caffe2 {
 
 const char* githubLinks = R"DOC(
   Github Links:
-  - https://github.com/pytorch/pytorch/blob/master/caffe2/operators/counter_ops.cc
+  - https://github.com/pytorch/pytorch/blob/main/caffe2/operators/counter_ops.cc
 
 )DOC";
 
@@ -135,7 +135,9 @@ namespace {
  */
 class CounterSerializer : public BlobSerializerBase {
  public:
+  // NOLINTNEXTLINE(modernize-use-equals-default)
   CounterSerializer() {}
+  // NOLINTNEXTLINE(modernize-use-equals-default)
   ~CounterSerializer() override {}
 
   void Serialize(
@@ -166,6 +168,7 @@ class CounterSerializer : public BlobSerializerBase {
 class CounterDeserializer : public BlobDeserializerBase {
  public:
   void Deserialize(const BlobProto& proto, Blob* blob) override {
+    // NOLINTNEXTLINE(performance-unnecessary-copy-initialization)
     auto tensorProto = proto.tensor();
     CAFFE_ENFORCE_EQ(tensorProto.dims_size(), 1, "Unexpected size of dims");
     CAFFE_ENFORCE_EQ(tensorProto.dims(0), 1, "Unexpected value of dims");

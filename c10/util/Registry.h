@@ -15,12 +15,13 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
-#include "c10/macros/Macros.h"
-#include "c10/util/Type.h"
+#include <c10/macros/Macros.h>
+#include <c10/util/Type.h>
 
 namespace c10 {
 
@@ -55,7 +56,8 @@ class Registry {
  public:
   typedef std::function<ObjectPtrType(Args...)> Creator;
 
-  Registry() : registry_(), priority_(), terminate_(true) {}
+  Registry(bool warning = true)
+      : registry_(), priority_(), terminate_(true), warning_(warning) {}
 
   void Register(
       const SrcType& key,
@@ -63,19 +65,19 @@ class Registry {
       const RegistryPriority priority = REGISTRY_DEFAULT) {
     std::lock_guard<std::mutex> lock(register_mutex_);
     // The if statement below is essentially the same as the following line:
-    // CHECK_EQ(registry_.count(key), 0) << "Key " << key
+    // TORCH_CHECK_EQ(registry_.count(key), 0) << "Key " << key
     //                                   << " registered twice.";
-    // However, CHECK_EQ depends on google logging, and since registration is
-    // carried out at static initialization time, we do not want to have an
+    // However, TORCH_CHECK_EQ depends on google logging, and since registration
+    // is carried out at static initialization time, we do not want to have an
     // explicit dependency on glog's initialization function.
     if (registry_.count(key) != 0) {
       auto cur_priority = priority_[key];
       if (priority > cur_priority) {
-  #ifdef DEBUG
+#ifdef DEBUG
         std::string warn_msg =
             "Overwriting already registered item for key " + KeyStrRepr(key);
         fprintf(stderr, "%s\n", warn_msg.c_str());
-  #endif
+#endif
         registry_[key] = creator;
         priority_[key] = priority;
       } else if (priority == cur_priority) {
@@ -87,7 +89,7 @@ class Registry {
         } else {
           throw std::runtime_error(err_msg);
         }
-      } else {
+      } else if (warning_) {
         std::string warn_msg =
             "Higher priority item already registered, skipping registration of " +
             KeyStrRepr(key);
@@ -113,11 +115,12 @@ class Registry {
   }
 
   ObjectPtrType Create(const SrcType& key, Args... args) {
-    if (registry_.count(key) == 0) {
+    auto it = registry_.find(key);
+    if (it == registry_.end()) {
       // Returns nullptr if the key is not registered.
       return nullptr;
     }
-    return registry_[key](args...);
+    return it->second(args...);
   }
 
   /**
@@ -125,6 +128,7 @@ class Registry {
    */
   std::vector<SrcType> Keys() const {
     std::vector<SrcType> keys;
+    keys.reserve(registry_.size());
     for (const auto& it : registry_) {
       keys.push_back(it.first);
     }
@@ -153,6 +157,7 @@ class Registry {
   std::unordered_map<SrcType, Creator> registry_;
   std::unordered_map<SrcType, RegistryPriority> priority_;
   bool terminate_;
+  const bool warning_;
   std::unordered_map<SrcType, std::string> help_message_;
   std::mutex register_mutex_;
 
@@ -203,11 +208,18 @@ class Registerer {
 // dllexport are mixed, but the warning is fine and linker will be properly
 // exporting the symbol. Same thing happens in the gflags flag declaration and
 // definition caes.
-#define C10_DECLARE_TYPED_REGISTRY(                                        \
-    RegistryName, SrcType, ObjectType, PtrType, ...)                       \
-  C10_IMPORT ::c10::Registry<SrcType, PtrType<ObjectType>, ##__VA_ARGS__>* \
-  RegistryName();                                                          \
-  typedef ::c10::Registerer<SrcType, PtrType<ObjectType>, ##__VA_ARGS__>   \
+#define C10_DECLARE_TYPED_REGISTRY(                                      \
+    RegistryName, SrcType, ObjectType, PtrType, ...)                     \
+  C10_API ::c10::Registry<SrcType, PtrType<ObjectType>, ##__VA_ARGS__>*  \
+  RegistryName();                                                        \
+  typedef ::c10::Registerer<SrcType, PtrType<ObjectType>, ##__VA_ARGS__> \
+      Registerer##RegistryName
+
+#define TORCH_DECLARE_TYPED_REGISTRY(                                     \
+    RegistryName, SrcType, ObjectType, PtrType, ...)                      \
+  TORCH_API ::c10::Registry<SrcType, PtrType<ObjectType>, ##__VA_ARGS__>* \
+  RegistryName();                                                         \
+  typedef ::c10::Registerer<SrcType, PtrType<ObjectType>, ##__VA_ARGS__>  \
       Registerer##RegistryName
 
 #define C10_DEFINE_TYPED_REGISTRY(                                         \
@@ -218,6 +230,17 @@ class Registerer {
         registry = new ::c10::                                             \
             Registry<SrcType, PtrType<ObjectType>, ##__VA_ARGS__>();       \
     return registry;                                                       \
+  }
+
+#define C10_DEFINE_TYPED_REGISTRY_WITHOUT_WARNING(                            \
+    RegistryName, SrcType, ObjectType, PtrType, ...)                          \
+  C10_EXPORT ::c10::Registry<SrcType, PtrType<ObjectType>, ##__VA_ARGS__>*    \
+  RegistryName() {                                                            \
+    static ::c10::Registry<SrcType, PtrType<ObjectType>, ##__VA_ARGS__>*      \
+        registry =                                                            \
+            new ::c10::Registry<SrcType, PtrType<ObjectType>, ##__VA_ARGS__>( \
+                false);                                                       \
+    return registry;                                                          \
   }
 
 // Note(Yangqing): The __VA_ARGS__ below allows one to specify a templated
@@ -253,16 +276,33 @@ class Registerer {
   C10_DECLARE_TYPED_REGISTRY(                               \
       RegistryName, std::string, ObjectType, std::unique_ptr, ##__VA_ARGS__)
 
+#define TORCH_DECLARE_REGISTRY(RegistryName, ObjectType, ...) \
+  TORCH_DECLARE_TYPED_REGISTRY(                               \
+      RegistryName, std::string, ObjectType, std::unique_ptr, ##__VA_ARGS__)
+
 #define C10_DEFINE_REGISTRY(RegistryName, ObjectType, ...) \
   C10_DEFINE_TYPED_REGISTRY(                               \
+      RegistryName, std::string, ObjectType, std::unique_ptr, ##__VA_ARGS__)
+
+#define C10_DEFINE_REGISTRY_WITHOUT_WARNING(RegistryName, ObjectType, ...) \
+  C10_DEFINE_TYPED_REGISTRY_WITHOUT_WARNING(                               \
       RegistryName, std::string, ObjectType, std::unique_ptr, ##__VA_ARGS__)
 
 #define C10_DECLARE_SHARED_REGISTRY(RegistryName, ObjectType, ...) \
   C10_DECLARE_TYPED_REGISTRY(                                      \
       RegistryName, std::string, ObjectType, std::shared_ptr, ##__VA_ARGS__)
 
+#define TORCH_DECLARE_SHARED_REGISTRY(RegistryName, ObjectType, ...) \
+  TORCH_DECLARE_TYPED_REGISTRY(                                      \
+      RegistryName, std::string, ObjectType, std::shared_ptr, ##__VA_ARGS__)
+
 #define C10_DEFINE_SHARED_REGISTRY(RegistryName, ObjectType, ...) \
   C10_DEFINE_TYPED_REGISTRY(                                      \
+      RegistryName, std::string, ObjectType, std::shared_ptr, ##__VA_ARGS__)
+
+#define C10_DEFINE_SHARED_REGISTRY_WITHOUT_WARNING( \
+    RegistryName, ObjectType, ...)                  \
+  C10_DEFINE_TYPED_REGISTRY_WITHOUT_WARNING(        \
       RegistryName, std::string, ObjectType, std::shared_ptr, ##__VA_ARGS__)
 
 // C10_REGISTER_CREATOR and C10_REGISTER_CLASS are hard-wired to use std::string

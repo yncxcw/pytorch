@@ -82,7 +82,7 @@ class ViterbiPathOp : public Operator<CPUContext> {
 
     CAFFE_ENFORCE(
         predictions.dim() == 2 && transitions.dim() == 2,
-        "Predictions and transitions hould 2D matrices");
+        "Predictions and transitions hold 2D matrices");
 
     CAFFE_ENFORCE(
         predictions.size(1) == transitions.size(0),
@@ -209,7 +209,7 @@ OPERATOR_SCHEMA(SwapBestPath)
     .NumInputs(2)
     .NumOutputs(1)
     .SetDoc(R"DOC(
-Given a sequence of idices and a matrix, enforce that these indices have the
+Given a sequence of indices and a matrix, enforce that these indices have the
 best columnwise scores
 score
 )DOC")

@@ -1,9 +1,9 @@
 ## @package cached_reader
 # Module caffe2.python.cached_reader
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
+
+
+
+
 
 import os
 
@@ -71,7 +71,7 @@ class CachedReader(DBFileReader):
         assert original_reader is not None, "original_reader can't be None"
         self.original_reader = original_reader
 
-        super(CachedReader, self).__init__(
+        super().__init__(
             db_path,
             db_type,
             name,

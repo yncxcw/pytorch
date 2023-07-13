@@ -53,8 +53,8 @@ The default value of *alpha* is 0.01.
 
 Github Links:
 
-- https://github.com/pytorch/pytorch/blob/master/caffe2/operators/leaky_relu_op.h
-- https://github.com/pytorch/pytorch/blob/master/caffe2/operators/leaky_relu_op.cc
+- https://github.com/pytorch/pytorch/blob/main/caffe2/operators/leaky_relu_op.h
+- https://github.com/pytorch/pytorch/blob/main/caffe2/operators/leaky_relu_op.cc
 
 
 <details>
@@ -110,7 +110,8 @@ OPERATOR_SCHEMA(LeakyReluGradient)
     .NumOutputs(1)
     .AllowInplace({{1, 0}})
     .Arg("alpha", "Coefficient of leakage")
-    .InheritOnnxSchema();
+    .InheritOnnxSchema()
+    .IdenticalTypeAndShapeOfInput(1);
 
 class GetLeakyReluGradient : public GradientMakerBase {
   using GradientMakerBase::GradientMakerBase;

@@ -1,7 +1,7 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
+
+
+
+
 
 from caffe2.python.schema import (
     Struct, FetchRecord, NewRecord, FeedRecord, InitEmptyRecord)
@@ -70,7 +70,7 @@ class TestPipeline(TestCase):
         output = FetchRecord(dst_blobs, ws=ws)
         num_dequeues = ws.blobs[str(counter)].fetch()
 
-        self.assertEquals(
+        self.assertEqual(
             num_dequeues, int(math.ceil(float(N) / NUM_DEQUEUE_RECORDS)))
 
         for a, b in zip(output.field_blobs(), expected_dst.field_blobs()):

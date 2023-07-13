@@ -23,20 +23,20 @@ class IDEEPContext final : public BaseContext {
 
   ~IDEEPContext() noexcept override {}
 
-  inline void SwitchToDevice(int /*stream_id*/) {}
+  inline void SwitchToDevice(int64_t /*stream_id*/) override {}
   using BaseContext::SwitchToDevice;
 
-  inline void WaitEvent(const Event& ev) {
+  inline void WaitEvent(const Event& ev) override {
     ev.Wait(IDEEP, this);
   }
 
-  inline void Record(Event* ev, const char* err_msg = nullptr) const {
+  inline void Record(Event* ev, const char* err_msg = nullptr) const override {
     CAFFE_ENFORCE(ev, "Event must not be null.");
     ev->Record(IDEEP, this, err_msg);
   }
 
 
-  inline void FinishDeviceComputation() {}
+  inline void FinishDeviceComputation() override {}
 
   inline rand_gen_type& RandGenerator() {
     if (!random_generator_.get()) {
@@ -83,7 +83,7 @@ class IDEEPContext final : public BaseContext {
           static_cast<const void*>(src),
           static_cast<void*>(dst));
     } else {
-      for (size_t i = 0; i < n; ++i) {
+      for (const auto i : c10::irange(n)) {
         dst[i] = src[i];
       }
     }
@@ -91,7 +91,7 @@ class IDEEPContext final : public BaseContext {
 
   template <class SrcContext, class DstContext>
   inline void
-  CopyItems(const TypeMeta& meta, size_t n, const void* src, void* dst) {
+  CopyItems(const TypeMeta meta, size_t n, const void* src, void* dst) {
     if (meta.copy()) {
       meta.copy()(src, dst, n);
     } else {

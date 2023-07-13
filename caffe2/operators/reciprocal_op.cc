@@ -8,7 +8,7 @@ namespace caffe2 {
 REGISTER_CPU_OPERATOR(
     Reciprocal,
     UnaryElementwiseOp<
-        TensorTypes<float>,
+        TensorTypes<float, double>,
         CPUContext,
         ReciprocalFunctor<CPUContext>>);
 
@@ -22,7 +22,7 @@ OPERATOR_SCHEMA(Reciprocal)
 Performs element-wise reciprocal ($\1/x$) of input tensor $X$.
 
 Github Link:
-- https://github.com/pytorch/pytorch/blob/master/caffe2/operators/reciprocal_op.cc
+- https://github.com/pytorch/pytorch/blob/main/caffe2/operators/reciprocal_op.cc
 
 <details>
 
@@ -64,8 +64,8 @@ Y:
 
 </details>
 )DOC")
-.Input(0, "X", "*(type: Tensor`<float>`)* Input data tensor.")
-.Output(0, "Y", "*(type: Tensor`<float>`)* Output tensor.");
+.Input(0, "X", "*(type: Tensor`<float, double>`)* Input data tensor.")
+.Output(0, "Y", "*(type: Tensor`<float, double>`)* Output tensor.");
 
 OPERATOR_SCHEMA(ReciprocalGradient).NumInputs(2).NumOutputs(1).AllowInplace({{1, 0}});
 

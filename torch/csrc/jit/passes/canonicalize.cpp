@@ -1,5 +1,7 @@
 #include <torch/csrc/jit/passes/canonicalize.h>
-#include <torch/csrc/jit/ir_views.h>
+
+#include <c10/util/irange.h>
+#include <torch/csrc/jit/ir/ir_views.h>
 
 namespace torch {
 namespace jit {
@@ -32,7 +34,7 @@ std::shared_ptr<Graph> Canonicalize(
     r->appendNode(r_node);
     auto outputs = node->outputs();
     auto r_outputs = r_node->outputs();
-    for (size_t i = 0; i < outputs.size(); i++) {
+    for (const auto i : c10::irange(outputs.size())) {
       rn_env[outputs.at(i)] = r_outputs.at(i);
     }
     if (node->hasAttribute(attr::Subgraph)) {
@@ -49,7 +51,7 @@ std::shared_ptr<Graph> Canonicalize(
 }
 
 // Which index in b's owning Node is b
-size_t blockIndex(const Block* b) {
+static size_t blockIndex(const Block* b) {
   auto n = b->owningNode();
   AT_ASSERT(n);
   for (size_t i = 0; i < n->blocks().size(); ++i) {
@@ -71,7 +73,7 @@ size_t blockIndex(const Block* b) {
  * NB: this is not a topological index. Topologically, two nodes in
  * different blocks of an if node are not topologically < or > each other.
  */
-bool isBefore(Node* n1, Node* n2) {
+static bool isBefore(Node* n1, Node* n2) {
   // Invalid to call with the same node as both args
   AT_ASSERT(n1 != n2);
 
@@ -120,7 +122,7 @@ bool isBefore(Node* n1, Node* n2) {
   }
 }
 
-bool isBefore(const Use& a, const Use& b) {
+static bool isBefore(const Use& a, const Use& b) {
   // If two uses are the same node, we order on offset
   if (a.user == b.user) {
     return a.offset < b.offset;
@@ -129,29 +131,45 @@ bool isBefore(const Use& a, const Use& b) {
   return isBefore(a.user, b.user);
 }
 
-std::vector<c10::optional<Use>> gatherFirstUses(at::ArrayRef<Value*> values) {
-  return fmap(values, [](Value* v) -> c10::optional<Use> {
-    if (v->uses().size() == 0) {
-      return c10::nullopt;
-    }
-    Use first_use = v->uses()[0];
-    for (size_t i = 1; i < v->uses().size(); ++i) {
-      auto n_use = v->uses()[i];
-      if (!isBefore(first_use, n_use)) {
-        first_use = n_use;
-      }
-    }
+static bool isAfter(const Use& a, const Use& b) {
+  if (a.user == b.user && a.offset == b.offset) {
+    return false;
+  }
+  return !isBefore(a, b);
+}
 
-    return first_use;
+bool isBeforeOrAfter(const Use& a, const Use& b, bool checking_before) {
+  return checking_before ? isBefore(a, b) : isAfter(a, b);
+}
+
+c10::optional<const Use> firstOrLastUse(Value* v, bool find_first) {
+  if (v->uses().empty()) {
+    return c10::nullopt;
+  }
+  Use extreme_use = v->uses()[0];
+  for (size_t i = 1; i < v->uses().size(); ++i) {
+    auto n_use = v->uses()[i];
+    if (!isBeforeOrAfter(extreme_use, n_use, find_first)) {
+      extreme_use = n_use;
+    }
+  }
+
+  return extreme_use;
+}
+
+static std::vector<c10::optional<const Use>> gatherFirstUses(
+    at::ArrayRef<Value*> values) {
+  return fmap(values, [&](Value* v) -> c10::optional<const Use> {
+    return firstOrLastUse(v, true);
   });
 }
 
-std::vector<size_t> sort_indexes(at::ArrayRef<Value*> values) {
+static std::vector<size_t> sort_indexes(at::ArrayRef<Value*> values) {
   // initialize original index locations
   std::vector<size_t> idx(values.size());
   std::iota(idx.begin(), idx.end(), 0);
 
-  std::vector<c10::optional<Use>> first_uses = gatherFirstUses(values);
+  std::vector<c10::optional<const Use>> first_uses = gatherFirstUses(values);
 
   // Sort values based on canonical ordering of their first usage
   std::sort(idx.begin(), idx.end(), [&first_uses](size_t i1, size_t i2) {
@@ -176,17 +194,17 @@ std::vector<size_t> sort_indexes(at::ArrayRef<Value*> values) {
   return idx;
 }
 
-void CanonicalizeLoopOutputs(Node* n) {
+static void CanonicalizeLoopOutputs(Node* n) {
   auto new_indices = sort_indexes(n->outputs());
   LoopView(n).permuteLoopCarried(new_indices);
 }
 
-void CanonicalizeIfOutputs(Node* n) {
+static void CanonicalizeIfOutputs(Node* n) {
   auto new_indices = sort_indexes(n->outputs());
   IfView(n).permuteOutputs(new_indices);
 }
 
-void CanonicalizeOutputs(Block* block) {
+static void CanonicalizeOutputs(Block* block) {
   // We iterate in reverse since ordering of a node's outputs is dependent on
   // the value use following it in the graph
   for (Node* n : block->nodes().reverse()) {
@@ -209,7 +227,7 @@ void CanonicalizeOutputs(Block* block) {
 
 // Canonicalize a graph's control flow node outputs. We do this to solve jitter
 // issues with outputs added to control flow nodes after the first pass of
-// compilation in compiler.cpp
+// compilation in ir_emitter.cpp
 void CanonicalizeOutputs(std::shared_ptr<Graph>& graph) {
   CanonicalizeOutputs(graph->block());
 }

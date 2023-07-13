@@ -1,8 +1,10 @@
 #pragma once
 
+#include <c10/util/irange.h>
 #include <torch/nn/cloneable.h>
 #include <torch/nn/module.h>
 
+#include <utility>
 #include <vector>
 
 namespace torch {
@@ -15,12 +17,12 @@ namespace nn {
 ///
 ///   torch::nn::ModuleList mlist(
 ///     torch::nn::Linear(3, 4),
-///     torch::nn::BatchNorm(4),
+///     torch::nn::BatchNorm1d(4),
 ///     torch::nn::Dropout(0.5)
 ///   );
 ///
-///   for (const auto &module : mlist) {
-///     module.pretty_print();
+///   for (const auto &module : *mlist) {
+///     module->pretty_print(std::cout);
 ///   }
 ///
 /// \endrst
@@ -39,7 +41,7 @@ namespace nn {
 ///
 ///   torch::nn::ModuleList mlist(
 ///     torch::nn::Linear(3, 4),
-///     torch::nn::BatchNorm(4),
+///     torch::nn::BatchNorm1d(4),
 ///     torch::nn::Dropout(0.5)
 ///   );
 ///
@@ -74,7 +76,7 @@ class ModuleListImpl : public Cloneable<ModuleListImpl> {
     for (const auto& module : modules_) {
       clone->push_back(module->clone(device));
     }
-    return std::move(clone);
+    return clone;
   }
 
   /// `reset()` is empty for `ModuleList`, since it does not have parameters of
@@ -145,7 +147,14 @@ class ModuleListImpl : public Cloneable<ModuleListImpl> {
         torch::detail::is_module<T>::value,
         "Can only call ModuleList::at with an nn::Module type");
     TORCH_CHECK(index < size(), "Index out of range");
-    return *modules_[index]->as<T>();
+    auto module = modules_[index]->as<T>();
+    TORCH_CHECK(
+        module,
+        "Unable to cast module[",
+        index,
+        "] to ",
+        c10::demangle(typeid(T).name()));
+    return *module;
   }
 
   /// Attempts to return the module at the given index as the requested type.
@@ -157,7 +166,14 @@ class ModuleListImpl : public Cloneable<ModuleListImpl> {
         torch::detail::is_module<T>::value,
         "Can only call ModuleList::at with an nn::Module type");
     TORCH_CHECK(index < size(), "Index out of range");
-    return *modules_[index]->as<T>();
+    const auto module = modules_[index]->as<T>();
+    TORCH_CHECK(
+        module,
+        "Unable to cast module[",
+        index,
+        "] to ",
+        c10::demangle(typeid(T).name()));
+    return *module;
   }
 
   /// Attempts to return a `std::shared_ptr` whose dynamic type is that of the
@@ -200,14 +216,16 @@ class ModuleListImpl : public Cloneable<ModuleListImpl> {
     TORCH_CHECK(index <= size(), "Index out of range");
 
     if (index == size())
-      push_back(module);
+      push_back(std::move(module));
     else {
       modules_.insert(
           modules_.begin() + Iterator::difference_type(index),
           std::move(module));
 
-      for (size_t i = index; i < size() - 1; ++i)
+      for (const auto i : c10::irange(index, size() - 1)) {
+        (void)i; // Suppress unused variable warning
         replace_module(c10::to_string(index), modules_[index]);
+      }
       register_module(c10::to_string(size() - 1), modules_.back());
     }
   }

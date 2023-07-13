@@ -10,10 +10,10 @@ Iterating through entries of this dataset is very fast since the dataset
 is stored as a set of native Caffe2 tensors, thus no type conversion or
 deserialization is necessary.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
+
+
+
+
 
 from caffe2.python import core, workspace
 from caffe2.python.dataio import Reader, Writer
@@ -182,7 +182,7 @@ def execution_step_with_progress(name, init_net, substeps, rows_read):
         report_interval=5)
 
 
-class Dataset(object):
+class Dataset:
     """Represents an in-memory dataset with fixed schema.
 
     Use this to store and iterate through datasets with complex schema that

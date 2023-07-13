@@ -1,15 +1,14 @@
 ## @package net_drawer
 # Module caffe2.python.net_drawer
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
+
+
+
+
 import argparse
 import json
 import logging
 from collections import defaultdict
 from caffe2.python import utils
-from future.utils import viewitems
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -119,7 +118,7 @@ def GetPydotGraph(
             graph.add_edge(pydot.Edge(input_node, op_node))
         for output_name in op.output:
             if output_name in pydot_nodes:
-                # we are overwriting an existing blob. need to updat the count.
+                # we are overwriting an existing blob. need to update the count.
                 pydot_node_counts[output_name] += 1
             output_node = blob_node_producer(
                 _escape_label(
@@ -379,7 +378,7 @@ def main():
                 caffe2_pb2.NetDef: lambda x: {x.name: x.op},
             }
         )
-    for key, operators in viewitems(graphs):
+    for key, operators in graphs.items():
         if args.minimal:
             graph = GetPydotGraphMinimal(
                 operators,

@@ -1,12 +1,10 @@
 # Caffe2
 
-[![Jenkins Build Status](https://ci.pytorch.org/jenkins/job/caffe2-master/lastCompletedBuild/badge/icon)](https://ci.pytorch.org/jenkins/job/caffe2-master)
-
 Caffe2 is a lightweight, modular, and scalable deep learning framework. Building on the original [Caffe](http://caffe.berkeleyvision.org), Caffe2 is designed with expression, speed, and modularity in mind.
 
 ## Questions and Feedback
 
-Please use Github issues (https://github.com/pytorch/pytorch/issues) to ask questions, report bugs, and request new features.
+Please use GitHub issues (https://github.com/pytorch/pytorch/issues) to ask questions, report bugs, and request new features.
 
 ### Further Resources on [Caffe2.ai](http://caffe2.ai)
 

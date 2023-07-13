@@ -42,6 +42,7 @@ bool ReluGradientFunctor<CPUContext>::Forward(
     T* dX,
     CPUContext* /* context */) const {
   const int size = std::accumulate(
+      // NOLINTNEXTLINE(modernize-use-transparent-functors)
       Y_dims.cbegin(), Y_dims.cend(), 1, std::multiplies<int>());
   EigenVectorArrayMap<T>(dX, size) =
       (ConstEigenVectorArrayMap<T>(Y, size) > T(0))
@@ -87,8 +88,8 @@ Applies rectified linear unit operation to the input data element-wise. The Relu
 $$Y = max(0,X)$$
 
 Github Links:
-- https://github.com/pytorch/pytorch/blob/master/caffe2/operators/relu_op.h
-- https://github.com/pytorch/pytorch/blob/master/caffe2/operators/relu_op.cc
+- https://github.com/pytorch/pytorch/blob/main/caffe2/operators/relu_op.h
+- https://github.com/pytorch/pytorch/blob/main/caffe2/operators/relu_op.cc
 
 <details>
 
@@ -144,6 +145,7 @@ GRADIENT_OPERATOR_SCHEMA(ReluGradient)
     .NumInputs(2)
     .NumOutputs(1)
     .AllowInplace({{1, 0}})
+    .IdenticalTypeAndShapeOfInput(1)
     .SetDoc(R"DOC(
 ReluGradient takes both Y and dY and uses this to update dX according to the
 chain rule and derivatives of the rectified linear function.

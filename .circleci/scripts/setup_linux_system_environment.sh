@@ -2,7 +2,7 @@
 set -eux -o pipefail
 
 # Set up CircleCI GPG keys for apt, if needed
-curl --retry 3 -s -L https://packagecloud.io/circleci/trusty/gpgkey | sudo apt-key add -
+curl --retry 3 --retry-all-errors -s -L https://packagecloud.io/circleci/trusty/gpgkey | sudo apt-key add -
 
 # Stop background apt updates.  Hypothetically, the kill should not
 # be necessary, because stop is supposed to send a kill signal to
@@ -33,7 +33,7 @@ systemctl list-units --all | cat
 sudo pkill apt-get || true
 
 # For even better luck, purge unattended-upgrades
-sudo apt-get purge -y unattended-upgrades
+sudo apt-get purge -y unattended-upgrades || true
 
 cat /etc/apt/sources.list
 

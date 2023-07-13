@@ -1,7 +1,7 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
+
+
+
+
 
 from abc import abstractmethod
 
@@ -76,7 +76,7 @@ def initialize_params_from_file(*args, **kwargs):
     return checkpoint.initialize_params_from_file(*args, **kwargs)
 
 
-class AnyExpTrainer(object):
+class AnyExpTrainer:
 
     def __init__(self, opts):
         import logging

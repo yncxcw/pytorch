@@ -1,7 +1,7 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
+
+
+
+
 
 from caffe2.python import schema
 from caffe2.python.layers.layers import ModelLayer
@@ -23,8 +23,7 @@ class LayerNormalization(ModelLayer):
         scale_init_value=1.0,
         **kwargs
     ):
-        super(LayerNormalization, self).__init__(
-            model, name, input_record, **kwargs)
+        super().__init__(model, name, input_record, **kwargs)
 
         assert isinstance(input_record, schema.Scalar), (
             "Incorrect input type: {}".format(input_record))
@@ -33,7 +32,7 @@ class LayerNormalization(ModelLayer):
         self.axis = axis
 
         assert len(self.input_shape) >= 1, (
-            "This layer supports only >= 2D tesnors")
+            "This layer supports only >= 2D tensors")
         input_dims = self.input_shape[0]
 
         self.output_schema = schema.Scalar(

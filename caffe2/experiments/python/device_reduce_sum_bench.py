@@ -15,17 +15,16 @@
 
 ## @package device_reduce_sum_bench
 # Module caffe2.experiments.python.device_reduce_sum_bench
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
+
+
+
+
 
 import argparse
 import itertools
 import logging
 import os
 
-from six import add_metaclass
 import numpy as np
 
 from caffe2.python import workspace, core
@@ -46,8 +45,7 @@ class BenchmarkMeta(type):
         return cls
 
 
-@add_metaclass(BenchmarkMeta)
-class Benchmark(object):
+class Benchmark(metaclass=BenchmarkMeta):
 
     def __init__(self):
         self.results = []

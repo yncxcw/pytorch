@@ -15,6 +15,7 @@ bool CoshGradientFunctor<CPUContext>::Forward(
     T* dX,
     CPUContext* /* context */) const {
   const int size = std::accumulate(
+      // NOLINTNEXTLINE(modernize-use-transparent-functors)
       X_dims.cbegin(), X_dims.cend(), 1, std::multiplies<int>());
   ConstEigenVectorArrayMap<T> dY_arr(dY, size);
   ConstEigenVectorArrayMap<T> X_arr(X, size);
@@ -44,7 +45,7 @@ Calculates the hyperbolic cosine of the given input tensor, element-wise.
 
 Github Links:
 
-- https://github.com/pytorch/pytorch/blob/master/caffe2/operators/cosh_op.cc
+- https://github.com/pytorch/pytorch/blob/main/caffe2/operators/cosh_op.cc
 
 
 <details>
@@ -93,7 +94,7 @@ Y: [1.22883528 1.05188156 1.35112322 1.43744212 1.07812598]
 OPERATOR_SCHEMA(CoshGradient)
     .NumInputs(2)
     .NumOutputs(1)
-    .IdenticalTypeAndShape();
+    .IdenticalTypeAndShapeOfInput(0);
 
 namespace {
 

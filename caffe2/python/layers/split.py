@@ -1,9 +1,9 @@
 ## @package split
 # Module caffe2.python.layers.split
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
+
+
+
+
 
 from caffe2.python import schema
 from caffe2.python.layers.layers import (
@@ -15,7 +15,7 @@ class Split(ModelLayer):
 
     def __init__(self, model, input_record, num_splits=1, axis=1,
                  name='split', split=None, **kwargs):
-        super(Split, self).__init__(model, name, input_record, **kwargs)
+        super().__init__(model, name, input_record, **kwargs)
         self.axis = axis
         # Assume that first dimension is batch, so actual axis in shape is
         # axis - 1
@@ -23,7 +23,7 @@ class Split(ModelLayer):
         assert axis >= 0
 
         assert isinstance(input_record, schema.Scalar),\
-            "Incorrect input type. Excpected Scalar, but received: {0}".\
+            "Incorrect input type. Expected Scalar, but received: {0}".\
             format(input_record)
 
         input_shape = input_record.field_type().shape

@@ -1,7 +1,6 @@
-from __future__ import absolute_import, division, print_function, unicode_literals
 import torch
 
-class WrapperModule(object):
+class WrapperModule:
     """ Wraps the instance of wrapped_type.
     For graph_mode traces the instance of wrapped_type.
     Randomaly initializes num_params tensors with single float element.

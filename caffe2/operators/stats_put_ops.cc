@@ -11,6 +11,7 @@ namespace caffe2 {
   };                                                                   \
   REGISTER_CPU_OPERATOR(OP_NAME, TemplatePutOp<STAT_NAME>);
 
+// NOLINTNEXTLINE(modernize-pass-by-value,cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_TEMPLATED_STAT_PUT_OP(
     AveragePut,
     AveragePutStat,
@@ -35,7 +36,7 @@ OPERATOR_SCHEMA(AveragePut)
     Consume a value and pushes it to the global stat registry as an average.
 
     Github Links:
-    - https://github.com/pytorch/pytorch/blob/master/caffe2/operators/stats_put_ops.cc
+    - https://github.com/pytorch/pytorch/blob/main/caffe2/operators/stats_put_ops.cc
 
         )DOC")
     .Input(
@@ -43,6 +44,7 @@ OPERATOR_SCHEMA(AveragePut)
         "value",
         "(*Tensor`<number>`*): A scalar tensor, representing any numeric value");
 
+// NOLINTNEXTLINE(modernize-pass-by-value,cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_TEMPLATED_STAT_PUT_OP(
     IncrementPut,
     IncrementPutStat,
@@ -67,7 +69,7 @@ OPERATOR_SCHEMA(IncrementPut)
     Consume a value and pushes it to the global stat registry as an sum.
 
     Github Links:
-    - https://github.com/pytorch/pytorch/blob/master/caffe2/operators/stats_put_ops.cc
+    - https://github.com/pytorch/pytorch/blob/main/caffe2/operators/stats_put_ops.cc
 
         )DOC")
     .Input(
@@ -75,6 +77,7 @@ OPERATOR_SCHEMA(IncrementPut)
         "value",
         "(*Tensor`<number>`*): A scalar tensor, representing any numeric value");
 
+// NOLINTNEXTLINE(modernize-pass-by-value,cppcoreguidelines-avoid-non-const-global-variables)
 REGISTER_TEMPLATED_STAT_PUT_OP(
     StdDevPut,
     StdDevPutStat,
@@ -99,7 +102,7 @@ OPERATOR_SCHEMA(StdDevPut)
       Consume a value and pushes it to the global stat registry as an standard deviation.
 
       Github Links:
-      - https://github.com/pytorch/pytorch/blob/master/caffe2/operators/stats_put_ops.cc
+      - https://github.com/pytorch/pytorch/blob/main/caffe2/operators/stats_put_ops.cc
 
         )DOC")
     .Input(

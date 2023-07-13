@@ -1,7 +1,7 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
+
+
+
+
 
 from caffe2.python import schema
 from caffe2.python.layers.arc_cosine_feature_map import ArcCosineFeatureMap
@@ -84,7 +84,7 @@ class SemiRandomFeatures(ArcCosineFeatureMap):
             self.input_record_full = input_record
             self.input_record_random = input_record
 
-        super(SemiRandomFeatures, self).__init__(
+        super().__init__(
             model,
             self.input_record_full,
             output_dims,

@@ -1,12 +1,14 @@
 #include <torch/csrc/jit/passes/lift_closures.h>
-#include <torch/csrc/jit/ir.h>
-#include <torch/csrc/jit/script/compiler.h>
+
+#include <torch/csrc/jit/frontend/ir_emitter.h>
+#include <torch/csrc/jit/ir/ir.h>
+
+#include <utility>
 
 namespace torch {
 namespace jit {
-namespace script {
 
-// Closures are initially emitted as prim::Function nodes with a single block.
+// Closures are initially emitted as prim::Closure nodes with a single block.
 // Here, we convert the block to a subgraph, adding all closed over variables
 // as a context tuple input to the closure node.
 // At this point the closure has already undergone conversion to SSA,
@@ -14,7 +16,7 @@ namespace script {
 // closure block.
 // Within the closure subgraph, the context tuple is unpacked and the unpacked
 // values are used for closed over values.
-void liftClosure(Node* closure) {
+static void liftClosure(Node* closure) {
   auto block = closure->blocks().at(0);
   auto subgraph = std::make_shared<Graph>();
   // closures/forks can be nested, so use closure owning graph
@@ -48,18 +50,18 @@ void liftClosure(Node* closure) {
   closure_tuple->addInput(closure->output());
   closure_tuple->addInput(pack_context->output());
   closure_tuple->output()->setType(
-      TupleType::create({closure->output()->type(), context_type}));
+      TupleType::create({closure->output()->type(), std::move(context_type)}));
   closure->eraseBlock(0);
   closure->g_(attr::Subgraph, std::move(subgraph));
   runCleanupPasses(closure->g(attr::Subgraph));
 }
 
-void liftClosures(Block* block) {
+static void liftClosures(Block* block) {
   for (auto it = block->nodes().begin(); it != block->nodes().end();) {
     Node* n = *it;
     it++;
     switch (n->kind()) {
-      case prim::Function: {
+      case prim::Closure: {
         liftClosure(n);
       } break;
       default: {
@@ -75,6 +77,5 @@ void liftClosures(const std::shared_ptr<Graph>& to_clean) {
   liftClosures(to_clean->block());
 }
 
-} // namespace script
 } // namespace jit
 } // namespace torch

@@ -27,6 +27,7 @@ bool ClipGradientOp<float, CPUContext>::RunOnDevice() {
   const float* dYdata = dY.data<float>();
   float* dXdata = dX->template mutable_data<float>();
   for (int i = 0; i < Y.numel(); ++i) {
+    // NOLINTNEXTLINE(cppcoreguidelines-narrowing-conversions,bugprone-narrowing-conversions)
     dXdata[i] = dYdata[i] * (Ydata[i] > min_ && Ydata[i] < max_);
   }
   return true;
@@ -49,7 +50,7 @@ blob as the input blob.
 
 Github Links:
 
-- https://github.com/pytorch/pytorch/blob/master/caffe2/operators/clip_op.cc
+- https://github.com/pytorch/pytorch/blob/main/caffe2/operators/clip_op.cc
 
 <details>
 

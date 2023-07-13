@@ -25,8 +25,6 @@ bool ModOp<CPUContext>::DoRunWithType() {
   return true;
 }
 
-namespace {
-
 REGISTER_CPU_OPERATOR(Mod, ModOp<CPUContext>);
 OPERATOR_SCHEMA(Mod)
     .NumInputs(1)
@@ -43,7 +41,7 @@ of the corresponding element in the input data. The divisor of the modulo is
 provided by the `divisor` argument.
 
 Github Link:
-- https://github.com/pytorch/pytorch/blob/master/caffe2/operators/mod_op.cc
+- https://github.com/pytorch/pytorch/blob/main/caffe2/operators/mod_op.cc
 
 <details>
 
@@ -95,5 +93,4 @@ X after running op:
     .Output(0, "Y", "*(type: Tensor`<int>`)* Output tensor of data with modulo operation applied.");
 
 SHOULD_NOT_DO_GRADIENT(ModOp);
-} // namespace
 } // namespace caffe2

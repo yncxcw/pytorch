@@ -1,24 +1,24 @@
 # @package utils
 # Module caffe2.python.utils
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
+
+
+
+
 
 from caffe2.proto import caffe2_pb2
-from caffe2.python.compatibility import container_abcs
-from future.utils import viewitems
 from google.protobuf.message import DecodeError, Message
 from google.protobuf import text_format
 
 import sys
+import collections
 import copy
 import functools
 import numpy as np
-from six import integer_types, binary_type, text_type, string_types
 
 OPTIMIZER_ITERATION_NAME = "optimizer_iteration"
+OPTIMIZER_ITERATION_LR_NAME = "optimizer_iteration_lr"
 ITERATION_MUTEX_NAME = "iteration_mutex"
+ITERATION_MUTEX_LR_NAME = "iteration_mutex_lr"
 
 
 def OpAlmostEqual(op_a, op_b, ignore_fields=None):
@@ -29,7 +29,7 @@ def OpAlmostEqual(op_a, op_b, ignore_fields=None):
     if not isinstance(ignore_fields, list):
         ignore_fields = [ignore_fields]
 
-    assert all(isinstance(f, text_type) for f in ignore_fields), (
+    assert all(isinstance(f, str) for f in ignore_fields), (
         'Expect each field is text type, but got {}'.format(ignore_fields))
 
     def clean_op(op):
@@ -41,7 +41,7 @@ def OpAlmostEqual(op_a, op_b, ignore_fields=None):
 
     op_a = clean_op(op_a)
     op_b = clean_op(op_b)
-    return op_a == op_b
+    return op_a == op_b or str(op_a) == str(op_b)
 
 
 def CaffeBlobToNumpyArray(blob):
@@ -67,7 +67,7 @@ def Caffe2TensorToNumpyArray(tensor):
             tensor.int64_data, dtype=np.int64).reshape(tensor.dims)
     elif tensor.data_type == caffe2_pb2.TensorProto.INT32:
         return np.asarray(
-            tensor.int32_data, dtype=np.int).reshape(tensor.dims)   # pb.INT32=>np.int use int32_data
+            tensor.int32_data, dtype=int).reshape(tensor.dims)   # pb.INT32=>int use int32_data
     elif tensor.data_type == caffe2_pb2.TensorProto.INT16:
         return np.asarray(
             tensor.int32_data, dtype=np.int16).reshape(tensor.dims)  # pb.INT16=>np.int16 use int32_data
@@ -100,9 +100,9 @@ def NumpyArrayToCaffe2Tensor(arr, name=None):
     elif arr.dtype == np.int64:
         tensor.data_type = caffe2_pb2.TensorProto.INT64
         tensor.int64_data.extend(list(arr.flatten().astype(np.int64)))
-    elif arr.dtype == np.int or arr.dtype == np.int32:
+    elif arr.dtype == int or arr.dtype == np.int32:
         tensor.data_type = caffe2_pb2.TensorProto.INT32
-        tensor.int32_data.extend(arr.flatten().astype(np.int).tolist())
+        tensor.int32_data.extend(arr.flatten().astype(int).tolist())
     elif arr.dtype == np.int16:
         tensor.data_type = caffe2_pb2.TensorProto.INT16
         tensor.int32_data.extend(list(arr.flatten().astype(np.int16)))  # np.int16=>pb.INT16 use int32_data
@@ -126,7 +126,7 @@ def MakeArgument(key, value):
     """Makes an argument based on the value type."""
     argument = caffe2_pb2.Argument()
     argument.name = key
-    iterable = isinstance(value, container_abcs.Iterable)
+    iterable = isinstance(value, collections.abc.Iterable)
 
     # Fast tracking common use case where a float32 array of tensor parameters
     # needs to be serialized.  The entire array is guaranteed to have the same
@@ -144,13 +144,13 @@ def MakeArgument(key, value):
 
     if type(value) is float:
         argument.f = value
-    elif type(value) in integer_types or type(value) is bool:
+    elif type(value) in [bool, int]:
         # We make a relaxation that a boolean variable will also be stored as
         # int.
         argument.i = value
-    elif isinstance(value, binary_type):
+    elif isinstance(value, bytes):
         argument.s = value
-    elif isinstance(value, text_type):
+    elif isinstance(value, str):
         argument.s = value.encode('utf-8')
     elif isinstance(value, caffe2_pb2.NetDef):
         argument.n.CopyFrom(value)
@@ -161,16 +161,16 @@ def MakeArgument(key, value):
             v.item() if type(v) is np.float_ else v for v in value
         )
     elif iterable and all(
-        type(v) in integer_types or type(v) in [bool, np.int_] for v in value
+        type(v) in [bool, int, np.int_] for v in value
     ):
         argument.ints.extend(
             v.item() if type(v) is np.int_ else v for v in value
         )
     elif iterable and all(
-        isinstance(v, binary_type) or isinstance(v, text_type) for v in value
+        isinstance(v, bytes) or isinstance(v, str) for v in value
     ):
         argument.strings.extend(
-            v.encode('utf-8') if isinstance(v, text_type) else v
+            v.encode('utf-8') if isinstance(v, str) else v
             for v in value
         )
     elif iterable and all(isinstance(v, caffe2_pb2.NetDef) for v in value):
@@ -219,13 +219,13 @@ def TryReadProtoWithClass(cls, s):
 def GetContentFromProto(obj, function_map):
     """Gets a specific field from a protocol buffer that matches the given class
     """
-    for cls, func in viewitems(function_map):
+    for cls, func in function_map.items():
         if type(obj) is cls:
             return func(obj)
 
 
 def GetContentFromProtoString(s, function_map):
-    for cls, func in viewitems(function_map):
+    for cls, func in function_map.items():
         try:
             obj = TryReadProtoWithClass(cls, s)
             return func(obj)
@@ -276,7 +276,7 @@ def ResetBlobs(blobs):
     )
 
 
-class DebugMode(object):
+class DebugMode:
     '''
     This class allows to drop you into an interactive debugger
     if there is an unhandled exception in your python script
@@ -357,7 +357,10 @@ def BuildUniqueMutexIter(
     from caffe2.python import core
     if not init_net.BlobIsDefined(iter):
         # Add training operators.
-        with core.DeviceScope(core.DeviceOption(caffe2_pb2.CPU)):
+        with core.DeviceScope(
+                core.DeviceOption(caffe2_pb2.CPU,
+                                  extra_info=["device_type_override:cpu"])
+        ):
             iteration = init_net.ConstantFill(
                 [],
                 iter,
@@ -380,7 +383,7 @@ def EnumClassKeyVals(cls):
     for k in dir(cls):
         if k == k.upper():
             v = getattr(cls, k)
-            if isinstance(v, string_types):
+            if isinstance(v, str):
                 assert v not in enum.values(), (
                     "Failed to resolve {} as Enum: "
                     "duplicate entries {}={}, {}={}".format(

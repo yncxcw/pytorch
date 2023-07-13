@@ -1,21 +1,9 @@
-import ctypes
 import tempfile
+import torch
 import contextlib
 from . import cudart, check_error
 
-
-class cudaOutputMode(object):
-    cudaKeyValuePair = ctypes.c_int(0)
-    cudaCSV = ctypes.c_int(1)
-
-    @staticmethod
-    def for_key(key):
-        if key == 'key_value':
-            return cudaOutputMode.cudaKeyValuePair
-        elif key == 'csv':
-            return cudaOutputMode.cudaCSV
-        else:
-            raise RuntimeError("supported CUDA profiler output modes are: key_value and csv")
+__all__ = ["init", "start", "stop", "profile"]
 
 DEFAULT_FLAGS = [
     "gpustarttimestamp",
@@ -29,13 +17,24 @@ DEFAULT_FLAGS = [
 
 
 def init(output_file, flags=None, output_mode='key_value'):
+    rt = cudart()
+    if not hasattr(rt, 'cudaOutputMode'):
+        raise AssertionError("HIP does not support profiler initialization!")
+    if hasattr(torch.version, "cuda") and torch.version.cuda is not None and int(torch.version.cuda.split(".")[0]) >= 12:
+        # Check https://github.com/pytorch/pytorch/pull/91118
+        # cudaProfilerInitialize is no longer needed after CUDA 12
+        raise AssertionError("CUDA12+ does not need profiler initialization!")
     flags = DEFAULT_FLAGS if flags is None else flags
-    output_mode = cudaOutputMode.for_key(output_mode)
+    if output_mode == 'key_value':
+        output_mode_enum = rt.cudaOutputMode.KeyValuePair
+    elif output_mode == 'csv':
+        output_mode_enum = rt.cudaOutputMode.CSV
+    else:
+        raise RuntimeError("supported CUDA profiler output modes are: key_value and csv")
     with tempfile.NamedTemporaryFile(delete=True) as f:
-        f.write(b'\n'.join(map(lambda f: f.encode('ascii'), flags)))
+        f.write(b'\n'.join(f.encode('ascii') for f in flags))
         f.flush()
-        check_error(cudart().cudaProfilerInitialize(
-            ctypes.c_char_p(f.name.encode('ascii')), ctypes.c_char_p(output_file.encode('ascii')), output_mode))
+        check_error(rt.cudaProfilerInitialize(f.name, output_file, output_mode_enum))
 
 
 def start():
