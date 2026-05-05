@@ -2,6 +2,7 @@
 
 #include <nlohmann/json.hpp>
 #include <exception>
+#include <limits>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -1041,6 +1042,7 @@ ProcessGroupNCCL::ProcessGroupNCCL(
   // before the corresponding thread is launched to avoid the error.
   heartbeatMonitor_ = std::make_unique<HeartbeatMonitor>(this);
   watchdog_ = std::make_unique<Watchdog>(this);
+  stragglerDetector_ = std::make_unique<StragglerDetector>(this);
 
 #ifdef ENABLE_NCCL_ERROR_CHECKING
   // in blockingWait mode, we don't need to enable the watchdog thread to check
@@ -1050,6 +1052,10 @@ ProcessGroupNCCL::ProcessGroupNCCL(
     watchdog_->start();
   }
 #endif // ENABLE_NCCL_ERROR_CHECKING
+
+  // Start the straggler detector thread (only spawns on rank 0; no-op on
+  // other ranks). Independent of blockingWait_.
+  stragglerDetector_->start();
 
   init();
   const std::string OFF = "OFF";
@@ -1575,6 +1581,9 @@ void ProcessGroupNCCL::abort() {
   // We need to wait for abort to finish before we can safely shut down
   // heartbeat monitoring thread.
   heartbeatMonitor_->stop();
+  if (stragglerDetector_) {
+    stragglerDetector_->stop();
+  }
 }
 
 // Difference between `abort()` and `shutdown()`:
@@ -1622,6 +1631,10 @@ void ProcessGroupNCCL::shutdown() {
   // Watchdog thread exiting, retire heartbeat monitoring thread now to avoid
   // false alarm
   heartbeatMonitor_->stop();
+  if (stragglerDetector_) {
+    stragglerDetector_->stop();
+    stragglerDetector_->join();
+  }
   // Destroy the communicator, reclaim resources
   LOG(INFO) << logPrefix() << "Watchdog joined, destroying NCCL communicators.";
   {
@@ -1677,10 +1690,17 @@ ProcessGroupNCCL::~ProcessGroupNCCL() {
   watchdog_->notify();
   // Tell heartbeat thread:
   heartbeatMonitor_->stop();
+  // Tell straggler detector thread (rank 0 only; stop is a no-op on others):
+  if (stragglerDetector_) {
+    stragglerDetector_->stop();
+  }
 
   // Wait for all threads to finish before returning
   watchdog_->join();
   heartbeatMonitor_->join();
+  if (stragglerDetector_) {
+    stragglerDetector_->join();
+  }
   if (onCompletionHookThread_.joinable()) {
     onCompletionHookThread_.join();
     LOG(INFO) << logPrefix()
@@ -2120,6 +2140,294 @@ void ProcessGroupNCCL::HeartbeatMonitor::runLoop() {
           << "ProcessGroupNCCL monitor thread is disabled, but would have terminated the process"
           << "after attempting to dump debug info, due to " << exitReason
           << '.';
+    }
+  }
+}
+
+// ============================================================================
+// StragglerDetector
+// ============================================================================
+//
+// Cross-rank coordination is via the c10d Store (TCPStore in practice).
+//   - Producer (every rank): on each collective entry, writes a presence
+//     marker key.
+//   - Consumer (rank 0 only): a background thread polls for those keys; the
+//     local arrival time at rank 0 of each key is the rank's relative entry
+//     delay vs rank 0. We never compare timestamps across ranks (which would
+//     require synchronized clocks), only the order in which keys appear at
+//     rank 0.
+
+namespace {
+// Key prefix lives in a separate namespace from existing keys (e.g.
+// "exception_dump", "UniqueNCCLID:") to avoid collisions across PGs.
+constexpr const char* kStragglerKeyPrefix = "ncclstraggler";
+} // namespace
+
+ProcessGroupNCCL::StragglerDetector::StragglerDetector(ProcessGroupNCCL* pg)
+    : pg_(pg) {
+  enabled_ = getCvarBool(TORCH_NCCL_STRAGGLER_DETECT, false);
+  thresholdMs_ = getCvarInt(TORCH_NCCL_STRAGGLER_THRESHOLD_MS, 1000);
+  pollMs_ = getCvarInt(TORCH_NCCL_STRAGGLER_POLL_MS, 200);
+  // Single-rank PGs don't have stragglers.
+  if (pg_->getSize() <= 1) {
+    enabled_ = false;
+  }
+  if (enabled_ && pg_->getUid() == 0) {
+    LOG(INFO) << pg_->logPrefix() << "StragglerDetector environments: "
+              << "TORCH_NCCL_STRAGGLER_DETECT: " << enabled_
+              << ", TORCH_NCCL_STRAGGLER_THRESHOLD_MS: " << thresholdMs_
+              << ", TORCH_NCCL_STRAGGLER_POLL_MS: " << pollMs_;
+  }
+}
+
+std::string ProcessGroupNCCL::StragglerDetector::makeKey(
+    uint64_t seq,
+    int rank,
+    bool isP2P) const {
+  // Format: ncclstraggler/<pg_uid>/<c|p>/<seq>/<rank>
+  // pg_uid_ is the string PG uid, unique across PGs in the same process.
+  std::ostringstream oss;
+  oss << kStragglerKeyPrefix << '/' << pg_->getGroupUid() << '/'
+      << (isP2P ? 'p' : 'c') << '/' << seq << '/' << rank;
+  return oss.str();
+}
+
+void ProcessGroupNCCL::StragglerDetector::recordEntry(
+    uint64_t seq,
+    bool isP2P) {
+  if (!enabled_) {
+    return;
+  }
+  // Presence-only marker; the byte value is irrelevant.
+  static const std::vector<uint8_t> kEmpty;
+  try {
+    pg_->store_->set(makeKey(seq, pg_->getRank(), isP2P), kEmpty);
+  } catch (const std::exception& e) {
+    // Don't let store hiccups break collectives; just disable further
+    // detection on this rank.
+    LOG(WARNING) << pg_->logPrefix()
+                 << "StragglerDetector: failed to publish entry marker for seq="
+                 << seq << " (" << (isP2P ? "p2p" : "coll")
+                 << "): " << e.what() << "; disabling detector on this rank.";
+    enabled_ = false;
+  }
+}
+
+void ProcessGroupNCCL::StragglerDetector::start() {
+  if (!enabled_) {
+    return;
+  }
+  // Only rank 0 runs the consumer thread.
+  if (pg_->getRank() != 0) {
+    return;
+  }
+  TORCH_CHECK(
+      !thread_.joinable(), "StragglerDetector thread already started");
+  thread_ = std::thread(&StragglerDetector::runLoop, this);
+}
+
+void ProcessGroupNCCL::StragglerDetector::stop() {
+  terminate_.store(true);
+  wakeUpCV_.notify_one();
+}
+
+void ProcessGroupNCCL::StragglerDetector::join() {
+  if (thread_.joinable()) {
+    thread_.join();
+  }
+}
+
+bool ProcessGroupNCCL::StragglerDetector::evaluateAndMaybeRetire(
+    SeqInFlight& s) {
+  const int worldSize = pg_->getSize();
+  const auto now = std::chrono::steady_clock::now();
+  const auto sinceFirstSeenMs =
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          now - s.firstSeenLocal)
+          .count();
+
+  // Ask the store which of the not-yet-seen rank keys are now present.
+  std::vector<std::string> probeKeys;
+  std::vector<int> probeRanks;
+  probeKeys.reserve(worldSize);
+  probeRanks.reserve(worldSize);
+  for (int r = 0; r < worldSize; ++r) {
+    if (s.arrivalUsByRank[r] < 0) {
+      probeKeys.push_back(makeKey(s.seq, r, s.isP2P));
+      probeRanks.push_back(r);
+    }
+  }
+
+  if (!probeKeys.empty()) {
+    try {
+      // check() returns true only if ALL keys are present, so we probe one at
+      // a time. Polling cadence is coarse, so this is fine for typical
+      // worldSize.
+      for (size_t i = 0; i < probeKeys.size(); ++i) {
+        if (pg_->store_->check({probeKeys[i]})) {
+          const int r = probeRanks[i];
+          const auto arrivalUs =
+              std::chrono::duration_cast<std::chrono::microseconds>(
+                  std::chrono::steady_clock::now() - s.firstSeenLocal)
+                  .count();
+          s.arrivalUsByRank[r] = arrivalUs;
+          ++s.numArrived;
+        }
+      }
+    } catch (const std::exception& e) {
+      LOG(WARNING) << pg_->logPrefix()
+                   << "StragglerDetector: store probe failed for seq="
+                   << s.seq << ": " << e.what();
+    }
+  }
+
+  const bool allArrived = s.numArrived == worldSize;
+  const bool timedOut = sinceFirstSeenMs > 10 * thresholdMs_;
+  if (!allArrived && !timedOut) {
+    return false;
+  }
+
+  // Compute spread among arrived ranks.
+  int64_t minUs = std::numeric_limits<int64_t>::max();
+  int64_t maxUs = std::numeric_limits<int64_t>::min();
+  int firstRank = -1;
+  int lastRank = -1;
+  for (int r = 0; r < worldSize; ++r) {
+    const int64_t a = s.arrivalUsByRank[r];
+    if (a < 0) {
+      continue;
+    }
+    if (a < minUs) {
+      minUs = a;
+      firstRank = r;
+    }
+    if (a > maxUs) {
+      maxUs = a;
+      lastRank = r;
+    }
+  }
+
+  const int64_t spreadMs = (maxUs - minUs) / 1000;
+  // Warn if either the spread between arrived ranks exceeds the threshold,
+  // or the seq timed out (i.e. some ranks never showed up).
+  std::vector<int> slowRanks;
+  if (!allArrived) {
+    for (int r = 0; r < worldSize; ++r) {
+      if (s.arrivalUsByRank[r] < 0) {
+        slowRanks.push_back(r);
+      }
+    }
+  } else if (spreadMs > thresholdMs_) {
+    const int64_t cutoffUs = minUs + thresholdMs_ * 1000;
+    for (int r = 0; r < worldSize; ++r) {
+      if (s.arrivalUsByRank[r] >= cutoffUs) {
+        slowRanks.push_back(r);
+      }
+    }
+  }
+
+  if (!slowRanks.empty()) {
+    std::ostringstream oss;
+    oss << "[NCCL STRAGGLER] pg=" << pg_->getUid() << " seq=" << s.seq
+        << (s.isP2P ? " (p2p)" : " (coll)")
+        << " first_rank=" << firstRank << " last_rank=" << lastRank
+        << " spread_ms=" << spreadMs
+        << " threshold_ms=" << thresholdMs_ << " slow_ranks=[";
+    for (size_t i = 0; i < slowRanks.size(); ++i) {
+      if (i > 0) {
+        oss << ',';
+      }
+      oss << slowRanks[i];
+    }
+    oss << ']';
+    if (!allArrived) {
+      oss << " (timed_out_after_ms=" << sinceFirstSeenMs << ")";
+    }
+    LOG(WARNING) << pg_->logPrefix() << oss.str();
+  }
+
+  // Best-effort cleanup of store keys we wrote / observed for this seq.
+  for (int r = 0; r < worldSize; ++r) {
+    try {
+      pg_->store_->deleteKey(makeKey(s.seq, r, s.isP2P));
+    } catch (...) {
+      // Ignore: store may not support deleteKey, or key may already be gone.
+    }
+  }
+  return true;
+}
+
+void ProcessGroupNCCL::StragglerDetector::runLoop() {
+  c10::setThreadName("pt_nccl_stragl");
+
+  while (!terminate_.load()) {
+    {
+      std::unique_lock<std::mutex> lock(mutex_);
+      wakeUpCV_.wait_for(
+          lock, std::chrono::milliseconds(pollMs_), [this] {
+            return terminate_.load();
+          });
+    }
+    if (terminate_.load()) {
+      break;
+    }
+
+    // Pick up newly-entered seqs by checking rank-0's own marker key, which
+    // we wrote in recordEntry. Once present, we know rank 0 has entered the
+    // collective and can start tracking arrivals from other ranks.
+    auto pickUpNewSeqs = [&](bool isP2P) {
+      uint64_t& cursor = isP2P ? nextP2PToTrack_ : nextCollectiveToTrack_;
+      // Limit how many new seqs we pick up per tick to keep store traffic
+      // bounded.
+      for (int i = 0; i < 64; ++i) {
+        if (inFlight_.size() >= kMaxInFlight) {
+          break;
+        }
+        const auto key = makeKey(cursor, /*rank=*/0, isP2P);
+        bool present = false;
+        try {
+          present = pg_->store_->check({key});
+        } catch (const std::exception& e) {
+          LOG(WARNING)
+              << pg_->logPrefix()
+              << "StragglerDetector: store check failed: " << e.what();
+          break;
+        }
+        if (!present) {
+          break;
+        }
+        SeqInFlight s;
+        s.seq = cursor;
+        s.isP2P = isP2P;
+        s.firstSeenLocal = std::chrono::steady_clock::now();
+        s.arrivalUsByRank.assign(pg_->getSize(), -1);
+        // Rank 0's own arrival is "now" relative to firstSeenLocal => 0.
+        s.arrivalUsByRank[0] = 0;
+        s.numArrived = 1;
+        inFlight_.push_back(std::move(s));
+        ++cursor;
+      }
+    };
+    pickUpNewSeqs(/*isP2P=*/false);
+    pickUpNewSeqs(/*isP2P=*/true);
+
+    // Evaluate each in-flight seq; retire those that are done.
+    for (auto it = inFlight_.begin(); it != inFlight_.end();) {
+      if (evaluateAndMaybeRetire(*it)) {
+        it = inFlight_.erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
+
+  // On shutdown, best-effort cleanup of any remaining keys we wrote.
+  for (auto& s : inFlight_) {
+    for (int r = 0; r < pg_->getSize(); ++r) {
+      try {
+        pg_->store_->deleteKey(makeKey(s.seq, r, s.isP2P));
+      } catch (...) {
+      }
     }
   }
 }
@@ -3780,6 +4088,9 @@ c10::intrusive_ptr<Work> ProcessGroupNCCL::collective(
   // Bump collective counter
   if (!coalescing_state_) {
     seqCollective_++;
+    if (stragglerDetector_ && stragglerDetector_->enabled()) {
+      stragglerDetector_->recordEntry(seqCollective_, /*isP2P=*/false);
+    }
   }
   op_id_++;
 
@@ -3793,6 +4104,9 @@ c10::intrusive_ptr<Work> ProcessGroupNCCL::collective(
     if ((coalescing_state_ & CoalColl) == 0) {
       // First op in coalesced operations
       seqCollective_++;
+      if (stragglerDetector_ && stragglerDetector_->enabled()) {
+        stragglerDetector_->recordEntry(seqCollective_, /*isP2P=*/false);
+      }
     }
     coalescing_state_ |= CoalColl;
     if (coalescedDevice_.index() < 0) {
@@ -3983,6 +4297,9 @@ c10::intrusive_ptr<Work> ProcessGroupNCCL::collectiveCoalesced(
 
   // Bump collective counter
   seqCollective_++;
+  if (stragglerDetector_ && stragglerDetector_->enabled()) {
+    stragglerDetector_->recordEntry(seqCollective_, /*isP2P=*/false);
+  }
 
   // For coalescingManager collectives, there is no individual c++ call per
   // collective so there is no flight record and we increment seqCollective_ and
@@ -4196,6 +4513,9 @@ c10::intrusive_ptr<Work> ProcessGroupNCCL::pointToPoint(
       // Bump P2P sequence number. Don't do so if it's a batch P2P, it will be
       // bumped in `startCoalescing`.
       seqP2P_++;
+      if (stragglerDetector_ && stragglerDetector_->enabled()) {
+        stragglerDetector_->recordEntry(seqP2P_, /*isP2P=*/true);
+      }
     }
   } else if (batchP2P) {
     // TODO(whc) - unclear why we special-case batchP2P to avoid this path, but
@@ -4230,6 +4550,9 @@ c10::intrusive_ptr<Work> ProcessGroupNCCL::pointToPoint(
     if (!coalescing_state_) {
       // Bump P2P sequence number.
       seqP2P_++;
+      if (stragglerDetector_ && stragglerDetector_->enabled()) {
+        stragglerDetector_->recordEntry(seqP2P_, /*isP2P=*/true);
+      }
     }
   }
 
@@ -4250,6 +4573,9 @@ c10::intrusive_ptr<Work> ProcessGroupNCCL::pointToPoint(
     // Bump  seqP2P_ once per coalesced group, not once per individual op.
     if ((coalescing_state_ & CoalP2P) == 0) {
       seqP2P_++;
+      if (stragglerDetector_ && stragglerDetector_->enabled()) {
+        stragglerDetector_->recordEntry(seqP2P_, /*isP2P=*/true);
+      }
     }
     coalescing_state_ |= CoalP2P;
     if (coalescedDevice_.index() < 0) {

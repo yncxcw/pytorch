@@ -144,6 +144,24 @@ static std::vector<std::string> TORCH_NCCL_RANKS_PER_ROOT = {
 
 static std::vector<std::string> TORCH_NCCL_NAN_CHECK = {"TORCH_NCCL_NAN_CHECK"};
 
+// Enable per-collective straggler detection. When on, every rank publishes a
+// presence marker via the c10d Store on collective entry, and rank 0 polls
+// the store to find ranks that are slow to enter. If the spread between the
+// earliest- and latest-entering rank exceeds TORCH_NCCL_STRAGGLER_THRESHOLD_MS,
+// rank 0 logs a warning naming the slow rank(s).
+static std::vector<std::string> TORCH_NCCL_STRAGGLER_DETECT = {
+    "TORCH_NCCL_STRAGGLER_DETECT"};
+
+// Threshold (milliseconds) above which the entry-time spread between ranks
+// triggers a straggler warning. Default 1000 ms.
+static std::vector<std::string> TORCH_NCCL_STRAGGLER_THRESHOLD_MS = {
+    "TORCH_NCCL_STRAGGLER_THRESHOLD_MS"};
+
+// Polling cadence (milliseconds) for the rank-0 straggler detector thread.
+// Default 200 ms.
+static std::vector<std::string> TORCH_NCCL_STRAGGLER_POLL_MS = {
+    "TORCH_NCCL_STRAGGLER_POLL_MS"};
+
 constexpr const char* NCCL_BACKEND_NAME = "nccl";
 
 constexpr const char* kStoreDumpKey = "exception_dump";
@@ -678,6 +696,84 @@ class TORCH_API ProcessGroupNCCL : public Backend {
     std::chrono::time_point<std::chrono::steady_clock> lastWorkListUpdateTime_;
   };
 
+  // Detects ranks that are slow to enter NCCL collectives ("stragglers").
+  //
+  // On every rank, recordEntry() publishes a per-(seq, rank) presence marker
+  // into the c10d Store at the moment the collective API is entered. On rank
+  // 0, a background thread polls the store and, for each in-flight seq,
+  // measures each rank's arrival time relative to rank 0's local clock. When
+  // all ranks have arrived (or a per-seq timeout elapses), if the spread
+  // between earliest and latest arrival exceeds a threshold, a warning is
+  // logged naming the slow rank(s).
+  //
+  // Off by default; gated by TORCH_NCCL_STRAGGLER_DETECT.
+  class StragglerDetector {
+   public:
+    StragglerDetector(ProcessGroupNCCL* pg);
+    ~StragglerDetector() = default;
+
+    // Producer side: called by every rank on every collective entry.
+    // Cheap when disabled; otherwise issues one Store::set per call.
+    void recordEntry(uint64_t seq, bool isP2P);
+
+    // Lifecycle. start() spawns the polling thread on rank 0 only.
+    void start();
+    void stop();
+    void join();
+
+    // True if detection is enabled and applicable to this PG.
+    bool enabled() const {
+      return enabled_;
+    }
+
+   private:
+    // Per-seq state held by the rank-0 consumer.
+    struct SeqInFlight {
+      uint64_t seq;
+      bool isP2P;
+      // Local steady_clock time at which rank 0 first observed this seq.
+      // All per-rank arrival times are measured relative to this.
+      std::chrono::time_point<std::chrono::steady_clock> firstSeenLocal;
+      // For each rank index, the local-clock duration since firstSeenLocal at
+      // which the rank's presence marker was first observed. -1 means
+      // "not yet observed".
+      std::vector<int64_t> arrivalUsByRank;
+      // Number of ranks that have arrived so far.
+      int numArrived;
+    };
+
+    // Build the Store key for a given (seq, rank, isP2P).
+    std::string makeKey(uint64_t seq, int rank, bool isP2P) const;
+
+    // Main polling loop on rank 0.
+    void runLoop();
+
+    // Evaluate and possibly emit a warning for one in-flight seq.
+    // Returns true if the seq is now retired (all arrived or timed out) and
+    // its keys have been deleted from the store.
+    bool evaluateAndMaybeRetire(SeqInFlight& s);
+
+    ProcessGroupNCCL* pg_;
+    bool enabled_{false};
+    int64_t thresholdMs_{1000};
+    int64_t pollMs_{200};
+
+    // Cap on tracked in-flight seqs; defensive bound.
+    static constexpr size_t kMaxInFlight = 1024;
+
+    // Rank 0 consumer state. Only accessed from the polling thread.
+    std::deque<SeqInFlight> inFlight_;
+    // Last seq number we've started tracking (so we know which new seqs to
+    // pick up from store keys).
+    uint64_t nextCollectiveToTrack_{1};
+    uint64_t nextP2PToTrack_{1};
+
+    std::thread thread_;
+    std::atomic<bool> terminate_{false};
+    std::condition_variable wakeUpCV_;
+    std::mutex mutex_;
+  };
+
   // Class that runs as a side thread to check whether the NCCL collective
   // is timed out or errors on the cached NCCL communicators.
   class Watchdog {
@@ -1066,6 +1162,11 @@ class TORCH_API ProcessGroupNCCL : public Backend {
 
   // Instance of the watchdog thread.
   std::unique_ptr<Watchdog> watchdog_;
+
+  // Instance of the straggler detector. Allocated on every PG when
+  // TORCH_NCCL_STRAGGLER_DETECT is set; the detector itself decides whether
+  // to spawn a thread (rank 0 only) and whether to act on recordEntry.
+  std::unique_ptr<StragglerDetector> stragglerDetector_;
 
   // Helper that broadcasts nccl unique ID to all ranks through the store
   void broadcastUniqueNCCLID(
